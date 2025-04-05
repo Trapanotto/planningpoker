@@ -295,10 +295,14 @@
                 } else {
                     // State: Votes are HIDDEN
                     if (participant.hasVoted) {
-                        cardBgBorderClasses = 'bg-blue-500 border-blue-700';
-                        statusColorClass = 'text-white';
-                        statusContent = '&#10004;';
+                        // Substate: User HAS voted - Use white SVG Checkmark
+                        cardBgBorderClasses = 'bg-blue-500 border-blue-700'; // Blue card
+                        statusColorClass = ''; // Color is set in SVG, so no text class needed
+                        statusContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6 text-white">
+                                           <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" />
+                                         </svg>`; // White SVG checkmark
                     } else {
+                        // Substate: User has NOT voted
                         cardBgBorderClasses = 'bg-gray-200 border-gray-400';
                         statusColorClass = 'text-gray-700';
                         statusContent = '?';
@@ -318,13 +322,11 @@
                 // Style the card (holds only the status) - SMALLER SIZE
                 participantElement.className = `flex items-center justify-center p-1 rounded-lg shadow-sm w-16 h-24 border-2 ${cardBgBorderClasses}`; // Smaller w-16 h-24, p-1
 
-                // Style the status (inside the card, centered) - SMALLER TEXT
-                statusElement.className = `text-lg font-semibold ${statusColorClass}`; // Smaller text-lg
-                if (statusContent === '&#10004;') {
-                    statusElement.innerHTML = statusContent;
-                } else {
-                    statusElement.textContent = statusContent;
-                }
+                // Style the status (inside the card, centered)
+                // Apply base style + color class (color class might be empty for SVG)
+                statusElement.className = `text-lg font-semibold ${statusColorClass}`;
+                // Set content using innerHTML for SVG or text
+                statusElement.innerHTML = statusContent;
 
                 // --- Append elements ---
                 participantContainer.appendChild(nameElement);    // Name first
