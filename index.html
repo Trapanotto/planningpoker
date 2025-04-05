@@ -31,7 +31,6 @@
         let currentUserName = null;
         let participantsListener = null; // To keep track of the listener
         let messageTimeoutId = null; // <<< Added: To track alert timeout
-        let heartbeatIntervalId = null; // <<< Added: To track heartbeat interval
 
         // --- DOM Elements ---
         const loadingScreen = document.getElementById('loadingScreen'); // <<< Added loading screen
@@ -246,8 +245,7 @@
             set(userRef, {
                 name: currentUserName,
                 vote: null, // Initial vote is null
-                hasVoted: false, // User hasn't voted yet
-                lastSeen: serverTimestamp() // <<< Added: Initial heartbeat timestamp
+                hasVoted: false // User hasn't voted yet
             }).then(() => {
                 // Successfully joined, now set up listener for real-time updates
                 listenToRoomChanges(currentRoomId);
@@ -255,17 +253,6 @@
                 // Set up Firebase's onDisconnect handler
                 // This ensures the user is removed from the participants list if they close the tab/browser
                 onDisconnect(userRef).remove();
-
-                // <<< Added: Start the heartbeat interval >>>
-                if (heartbeatIntervalId) clearInterval(heartbeatIntervalId); // Clear any existing interval
-                heartbeatIntervalId = setInterval(() => {
-                    if (currentUserId && currentRoomId) { // Ensure we still have context
-                        const userSeenRef = ref(database, `rooms/${currentRoomId}/participants/${currentUserId}/lastSeen`);
-                        set(userSeenRef, serverTimestamp()).catch(error => {
-                            console.warn("Heartbeat update failed:", error); // Log warning, don't stop interval
-                        });
-                    }
-                }, 5000); // Update every 5 seconds
 
                 // Show the main poker room view
                 showScreen(pokerRoomScreen);
@@ -296,89 +283,70 @@
                 const participant = participantsData[userId];
                 if (!participant) return; // Skip if participant data is missing for some reason
 
-                // <<< Added: Check if participant is stale (but not the current user) >>>
-                const now = Date.now(); 
-                const staleThreshold = 30 * 1000; // Use the same threshold as the removal logic
-                const isStale = participant.lastSeen && (now - participant.lastSeen > staleThreshold);
+                // --- Create elements ---
+                const participantContainer = document.createElement('div'); // New container for name + card
+                const participantElement = document.createElement('div');   // The card itself
+                const nameElement = document.createElement('div');
+                const statusElement = document.createElement('div');
 
-                // Only render if the participant is NOT stale OR if it IS the current user
-                if (!isStale || userId === currentUserIdFromListener) {
+                // --- Determine styling based on state (for the card) ---
+                let cardBgBorderClasses = '';
+                let statusColorClass = 'text-gray-800'; // Default dark gray text
+                let statusContent = '';
 
-                    // --- Create elements ---
-                    const participantContainer = document.createElement('div'); // New container for name + card
-                    const participantElement = document.createElement('div');   // The card itself
-                    const nameElement = document.createElement('div');
-                    const statusElement = document.createElement('div');
+                if (votesRevealed) {
+                    // State: Votes are REVEALED
+                    cardBgBorderClasses = 'bg-white border-gray-300';
+                    statusContent = participant.vote ?? '-';
+                    statusColorClass = 'text-gray-800';
 
-                    // --- Determine styling based on state (for the card) ---
-                    let cardBgBorderClasses = '';
-                    let statusColorClass = 'text-gray-800'; // Default dark gray text
-                    let statusContent = '';
-
-                    if (votesRevealed) {
-                        // State: Votes are REVEALED
-                        cardBgBorderClasses = 'bg-white border-gray-300';
-                        statusContent = participant.vote ?? '-';
-                        statusColorClass = 'text-gray-800';
-
-                        if (participant.vote !== null && !isNaN(parseFloat(participant.vote))) {
-                            const voteValue = parseFloat(participant.vote);
-                            numericVotes.push(voteValue);
-                            voteSum += voteValue;
-                            voteCount++;
-                        }
-                    } else {
-                        // State: Votes are HIDDEN
-                        if (participant.hasVoted) {
-                            // Substate: User HAS voted - Use white SVG Checkmark
-                            cardBgBorderClasses = 'bg-blue-500 border-blue-700'; // Blue card
-                            statusColorClass = ''; // Color is set in SVG, so no text class needed
-                            statusContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6 text-white">
-                                               <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" />
-                                             </svg>`; // White SVG checkmark
-                        } else {
-                            // Substate: User has NOT voted
-                            cardBgBorderClasses = 'bg-gray-200 border-gray-400';
-                            statusColorClass = 'text-gray-700';
-                            statusContent = '?';
-                        }
-                    }
-
-                    // --- Apply classes and content ---
-
-                    // Style the container (holds name and card)
-                    participantContainer.className = 'flex flex-col items-center';
-
-                    // Style the name (above the card)
-                    nameElement.textContent = participant.name;
-                    // Always use dark text, add bold for current user, match card width
-                    nameElement.className = `text-xs font-medium text-center w-16 truncate mb-1 text-gray-800 ${userId === currentUserIdFromListener ? 'font-bold' : ''}`; // Smaller text, w-16
-
-                    // Style the card (holds only the status) - SMALLER SIZE
-                    participantElement.className = `flex items-center justify-center p-1 rounded-lg shadow-sm w-16 h-24 border-2 ${cardBgBorderClasses}`; // Smaller w-16 h-24, p-1
-
-                    // Style the status (inside the card, centered)
-                    // Apply base style + color class (color class might be empty for SVG)
-                    statusElement.className = `text-lg font-semibold ${statusColorClass}`;
-                    // Set content using innerHTML for SVG or text
-                    statusElement.innerHTML = statusContent;
-
-                    // --- Append elements ---
-                    participantContainer.appendChild(nameElement);    // Name first
-                    participantElement.appendChild(statusElement);    // Status inside card
-                    participantContainer.appendChild(participantElement); // Card below name
-                    participantsList.appendChild(participantContainer); // Add the whole container to the list
-
-                } // <<< End of rendering condition
-
-                // --- Calculations (still include everyone for average if votes revealed) ---
-                 // Note: Calculations still happen even if visually hidden when revealed
-                if (votesRevealed && participant.vote !== null && !isNaN(parseFloat(participant.vote))) {
+                    if (participant.vote !== null && !isNaN(parseFloat(participant.vote))) {
                         const voteValue = parseFloat(participant.vote);
                         numericVotes.push(voteValue);
                         voteSum += voteValue;
                         voteCount++;
+                    }
+                } else {
+                    // State: Votes are HIDDEN
+                    if (participant.hasVoted) {
+                        // Substate: User HAS voted - Use white SVG Checkmark
+                        cardBgBorderClasses = 'bg-blue-500 border-blue-700'; // Blue card
+                        statusColorClass = ''; // Color is set in SVG, so no text class needed
+                        statusContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6 text-white">
+                                           <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" />
+                                         </svg>`; // White SVG checkmark
+                    } else {
+                        // Substate: User has NOT voted
+                        cardBgBorderClasses = 'bg-gray-200 border-gray-400';
+                        statusColorClass = 'text-gray-700';
+                        statusContent = '?';
+                    }
                 }
+
+                // --- Apply classes and content ---
+
+                // Style the container (holds name and card)
+                participantContainer.className = 'flex flex-col items-center';
+
+                // Style the name (above the card)
+                nameElement.textContent = participant.name;
+                // Always use dark text, add bold for current user, match card width
+                nameElement.className = `text-xs font-medium text-center w-16 truncate mb-1 text-gray-800 ${userId === currentUserIdFromListener ? 'font-bold' : ''}`; // Smaller text, w-16
+
+                // Style the card (holds only the status) - SMALLER SIZE
+                participantElement.className = `flex items-center justify-center p-1 rounded-lg shadow-sm w-16 h-24 border-2 ${cardBgBorderClasses}`; // Smaller w-16 h-24, p-1
+
+                // Style the status (inside the card, centered)
+                // Apply base style + color class (color class might be empty for SVG)
+                statusElement.className = `text-lg font-semibold ${statusColorClass}`;
+                // Set content using innerHTML for SVG or text
+                statusElement.innerHTML = statusContent;
+
+                // --- Append elements ---
+                participantContainer.appendChild(nameElement);    // Name first
+                participantElement.appendChild(statusElement);    // Status inside card
+                participantContainer.appendChild(participantElement); // Card below name
+                participantsList.appendChild(participantContainer); // Add the whole container to the list
 
             });
 
@@ -510,8 +478,7 @@
                 update(userRef, {
                     name: userNameFromStorage, // Ensure name is present/re-added
                     vote: newVote,
-                    hasVoted: newHasVoted,
-                    lastSeen: serverTimestamp() // <<< Added: Update lastSeen on vote
+                    hasVoted: newHasVoted
                 }).catch(error => {
                     console.error("Error updating vote:", error);
                     showMessage("Stimmabgabe fehlgeschlagen."); // Translated
@@ -608,33 +575,10 @@
                     const currentUserData = participants[currentUserId]; 
                     const currentUserVote = currentUserData ? currentUserData.vote : null;
 
-                    // <<< Added: Check for stale participants >>>
-                    const now = Date.now(); // Use client time for comparison (serverTimestamp is converted on read)
-                    const staleThreshold = 60 * 1000; // 60 seconds threshold
-                    Object.keys(participants).forEach(userId => {
-                        const participant = participants[userId];
-                        // Check if participant exists, has a lastSeen time, is not the current user, and is stale
-                        if (participant && participant.lastSeen && userId !== currentUserId && (now - participant.lastSeen > staleThreshold)) {
-                            // <<< COMMENTED OUT Client-Side Removal - Rely on Server Function or onDisconnect >>>
-                            // console.log(`Removing stale participant: ${participant.name} (ID: ${userId})`);
-                            // const staleUserRef = ref(database, `rooms/${roomId}/participants/${userId}`);
-                            // remove(staleUserRef).catch(error => {
-                            //     console.warn(`Failed to remove stale participant ${userId}:`, error);
-                            // });
-                        }
-                    });
-                    // <<< End Stale Check >>>
-
                     // Re-render the participants list and voting cards with the new data
                     // (Stale users will be visually removed when Firebase confirms the deletion and triggers this listener again)
                     // <<< Pass the current global currentUserId >>>
                     renderParticipants(participants, votesRevealed, currentUserVote, currentUserId);
-
-                    // <<< ADDED: Ensure voting cards are also re-rendered on every update >>>
-                    // <<< REFINED: Explicitly get latest vote from snapshot before rendering >>>
-                    const latestCurrentUserVote = (participants[currentUserId] && participants[currentUserId].vote !== undefined) ? participants[currentUserId].vote : null;
-                    console.log(`Rendering voting cards for ${currentUserId}. Current vote from snapshot: ${latestCurrentUserVote}`); // Log for debugging
-                    renderVotingCards(latestCurrentUserVote);
 
                     // Enable/disable buttons based on vote revealed status
                     // <<< REVERTED: Use hidden class again for primary action clarity >>>
@@ -661,10 +605,6 @@
                     window.location.hash = ''; // Go back to create screen URL
                     sessionStorage.removeItem('planningPokerUserId'); // Clear user ID
                     sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
-                    if (heartbeatIntervalId) {
-                         clearInterval(heartbeatIntervalId);
-                         heartbeatIntervalId = null;
-                    }
                     showScreen(createRoomScreen); // Show the create screen UI
                 }
             }, (error) => {
@@ -678,12 +618,7 @@
                  // <<< ADD: Clear stored user data on listener error >>>
                  sessionStorage.removeItem('planningPokerUserId'); 
                  sessionStorage.removeItem('planningPokerUserName');
-                 if (heartbeatIntervalId) {
-                     clearInterval(heartbeatIntervalId);
-                     heartbeatIntervalId = null;
-                 }
-                 sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
-                showScreen(createRoomScreen); // <<< Show create screen (hides loader)
+                 showScreen(createRoomScreen); // <<< Show create screen (hides loader)
             });
         }
 
@@ -759,6 +694,14 @@
             if (savedName && displayNameInput) {
                 displayNameInput.value = savedName;
             }
+        });
+
+        // <<< NEW: Attempt to clear username on page unload/hide >>>
+        window.addEventListener('pagehide', () => {
+            // This is not guaranteed to run reliably, but it's an attempt
+            // to clear the name when the user leaves, potentially forcing re-entry on return.
+            console.log("pagehide event triggered - clearing username from session storage.");
+            sessionStorage.removeItem('planningPokerUserName');
         });
 
     </script>
