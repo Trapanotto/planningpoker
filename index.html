@@ -629,6 +629,9 @@
                     // <<< Pass the current global currentUserId >>>
                     renderParticipants(participants, votesRevealed, currentUserVote, currentUserId);
 
+                    // <<< ADDED: Ensure voting cards are also re-rendered on every update >>>
+                    renderVotingCards(currentUserVote);
+
                     // Enable/disable buttons based on vote revealed status
                     // AND toggle visibility
                     if (votesRevealed) {
