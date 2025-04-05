@@ -213,8 +213,12 @@
         joinRoomButton.addEventListener('click', () => {
             const displayName = displayNameInput.value.trim();
             if (!displayName) {
-                showMessage("Bitte gib deinen Anzeigenamen ein."); // Translated
-                return; // Prevent joining without a name
+                showMessage("Bitte gib deinen Anzeigenamen ein.");
+                return;
+            }
+            if (displayName.length > 30) {
+                 showMessage("Dein Anzeigename darf maximal 30 Zeichen lang sein.");
+                 return; // Verhindert den Firebase-Aufruf
             }
             if (!currentRoomId) {
                 // This should ideally not happen if navigated correctly, but check anyway
@@ -544,6 +548,13 @@
                     const roomData = snapshot.val();
                     const participants = roomData.participants || {}; // Get participants, default to empty object
                     const votesRevealed = roomData.votesRevealed || false; // Get revealed status
+
+                    // <<< NEU: Benutzernamen wiederherstellen, falls nötig >>>
+                    if (currentUserId && !currentUserName && participants[currentUserId]) {
+                        currentUserName = participants[currentUserId].name;
+                        console.log('Restored username from Firebase:', currentUserName);
+                    }
+                    // <<< ENDE NEU >>>
 
                     // Get the current user's vote from the latest snapshot data
                     const currentUserData = participants[currentUserId];
