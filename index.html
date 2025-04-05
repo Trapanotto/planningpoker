@@ -376,8 +376,9 @@
                     summaryHtml += `<div class="text-center mb-2"><span class="font-bold text-3xl text-blue-600">${average}</span></div>`; // Changed text-xl to text-3xl
                     summaryHtml += `<div class="text-xs text-gray-600 text-center">(Min: ${minVote}, Max: ${maxVote})</div>`; // Kept Min/Max
 
-                    // Check for consensus: requires numeric votes, all same, and no non-numeric votes cast
-                    if (voteCount > 0 && new Set(numericVotes).size === 1 && !hasNonNumericVote) {
+                    // Check for consensus: requires numeric votes, all same, no non-numeric votes cast,
+                    // AND everyone must have cast a numeric vote.
+                    if (voteCount > 0 && new Set(numericVotes).size === 1 && !hasNonNumericVote && voteCount === participantIds.length) {
                          summaryHtml += `<div class="mt-2 text-center text-green-600 font-semibold">Konsens erreicht!</div>`; // Translated
                     }
 
