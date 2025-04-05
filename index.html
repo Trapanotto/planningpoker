@@ -615,11 +615,12 @@
                         const participant = participants[userId];
                         // Check if participant exists, has a lastSeen time, is not the current user, and is stale
                         if (participant && participant.lastSeen && userId !== currentUserId && (now - participant.lastSeen > staleThreshold)) {
-                            console.log(`Removing stale participant: ${participant.name} (ID: ${userId})`);
-                            const staleUserRef = ref(database, `rooms/${roomId}/participants/${userId}`);
-                            remove(staleUserRef).catch(error => {
-                                console.warn(`Failed to remove stale participant ${userId}:`, error);
-                            });
+                            // <<< COMMENTED OUT Client-Side Removal - Rely on Server Function or onDisconnect >>>
+                            // console.log(`Removing stale participant: ${participant.name} (ID: ${userId})`);
+                            // const staleUserRef = ref(database, `rooms/${roomId}/participants/${userId}`);
+                            // remove(staleUserRef).catch(error => {
+                            //     console.warn(`Failed to remove stale participant ${userId}:`, error);
+                            // });
                         }
                     });
                     // <<< End Stale Check >>>
@@ -630,19 +631,22 @@
                     renderParticipants(participants, votesRevealed, currentUserVote, currentUserId);
 
                     // <<< ADDED: Ensure voting cards are also re-rendered on every update >>>
-                    renderVotingCards(currentUserVote);
+                    // <<< REFINED: Explicitly get latest vote from snapshot before rendering >>>
+                    const latestCurrentUserVote = (participants[currentUserId] && participants[currentUserId].vote !== undefined) ? participants[currentUserId].vote : null;
+                    console.log(`Rendering voting cards for ${currentUserId}. Current vote from snapshot: ${latestCurrentUserVote}`); // Log for debugging
+                    renderVotingCards(latestCurrentUserVote);
 
                     // Enable/disable buttons based on vote revealed status
-                    // AND toggle visibility
+                    // <<< REVERTED: Use hidden class again for primary action clarity >>>
                     if (votesRevealed) {
                         revealButton.classList.add('hidden');
                         resetButton.classList.remove('hidden');
-                        revealButton.disabled = true;
+                        revealButton.disabled = true;  // Keep disabled state for correctness
                         resetButton.disabled = false;
                     } else {
                         revealButton.classList.remove('hidden');
                         resetButton.classList.add('hidden');
-                        revealButton.disabled = false;
+                        revealButton.disabled = false; // Keep disabled state for correctness
                         resetButton.disabled = true;
                     }
 
