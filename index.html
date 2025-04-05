@@ -12,11 +12,11 @@
 
         // Your web app's Firebase configuration
         const firebaseConfig = {
-            apiKey: "AIzaSyABZ2rEEwDsGUNQ475Iq_RzfqYlMqUEW-M", // IMPORTANT: Replace with your actual API key if needed, but this one is likely configured for public access for the demo DB.
+            apiKey: "AIzaSyABZ2rEEwDsGUNQ475Iq_RzfqYlMqUEW-M", 
             authDomain: "planningpoker-115b0.firebaseapp.com",
             databaseURL: "https://planningpoker-115b0-default-rtdb.europe-west1.firebasedatabase.app",
             projectId: "planningpoker-115b0",
-            storageBucket: "planningpoker-115b0.appspot.com", // Corrected storage bucket domain
+            storageBucket: "planningpoker-115b0.appspot.com", 
             messagingSenderId: "883176222007",
             appId: "1:883176222007:web:b18ea07bdf0733bd557eb2"
         };
@@ -340,18 +340,30 @@
 
                 let minVote = null;
                 let maxVote = null;
+                let hasNonNumericVote = false; // <<< Flag for non-numeric votes
+
+                // Calculate stats and check for non-numeric votes *before* building summaryHTML
+                if (voteCount > 0) {
+                     minVote = Math.min(...numericVotes);
+                     maxVote = Math.max(...numericVotes);
+                 }
+                // Check all participants who voted for non-numeric votes
+                participantIds.forEach(userId => {
+                    const participant = participantsData[userId];
+                    if (participant.hasVoted && participant.vote !== null) {
+                        if (isNaN(parseFloat(participant.vote))) {
+                            hasNonNumericVote = true;
+                        }
+                    }
+                });
 
                 if (voteCount > 0) {
-                    // Calculate average, min, max if there are numeric votes
                     const average = (voteSum / voteCount).toFixed(1);
-                    minVote = Math.min(...numericVotes); // Store min
-                    maxVote = Math.max(...numericVotes); // Store max
-                    // Increase font size for average
                     summaryHtml += `<div class="text-center mb-2"><span class="font-bold text-3xl text-blue-600">${average}</span></div>`; // Changed text-xl to text-3xl
                     summaryHtml += `<div class="text-xs text-gray-600 text-center">(Min: ${minVote}, Max: ${maxVote})</div>`; // Kept Min/Max
 
-                    // Check for consensus (all numeric votes are the same)
-                    if (new Set(numericVotes).size === 1) {
+                    // Check for consensus: requires numeric votes, all same, and no non-numeric votes cast
+                    if (voteCount > 0 && new Set(numericVotes).size === 1 && !hasNonNumericVote) {
                          summaryHtml += `<div class="mt-2 text-center text-green-600 font-semibold">Konsens erreicht!</div>`; // Translated
                     }
 
@@ -454,14 +466,40 @@
             });
         }
 
-        // Handle Reveal Votes button click
+        // Handle Reveal Votes button click with countdown
         revealButton.addEventListener('click', () => {
-            if (!currentRoomId) return;
-            const roomRef = ref(database, `rooms/${currentRoomId}`);
-            // Set the votesRevealed flag to true in Firebase
-            update(roomRef, { votesRevealed: true })
-                .catch(error => console.error("Error revealing votes:", error));
-            // The onValue listener will automatically update the UI
+            if (!currentRoomId || revealButton.disabled) return; // Prevent action if no room or already processing
+
+            let countdown = 3;
+            const originalText = revealButton.textContent; // Store original text
+
+            revealButton.disabled = true; // Disable button during countdown
+            revealButton.textContent = countdown; // Show initial countdown value
+
+            const intervalId = setInterval(() => {
+                countdown--;
+                if (countdown > 0) {
+                    revealButton.textContent = countdown;
+                } else {
+                    clearInterval(intervalId); // Stop the countdown
+
+                    // --- Trigger Firebase Update --- 
+                    const roomRef = ref(database, `rooms/${currentRoomId}`);
+                    update(roomRef, { votesRevealed: true })
+                        .catch(error => {
+                             console.error("Error revealing votes:", error);
+                             showMessage("Fehler beim Aufdecken der Stimmen."); // Show error
+                             // Optionally re-enable button immediately on error, though listener might override
+                             // revealButton.disabled = false; 
+                        })
+                        .finally(() => {
+                             // Restore original text (button might be hidden by listener already)
+                             revealButton.textContent = originalText;
+                             // Listener will handle disabling/hiding based on new Firebase state
+                        });
+                    // -------------------------------
+                }
+            }, 1000); // Update every 1 second
         });
 
         // Handle Reset Votes / Start New Vote button click
@@ -513,8 +551,18 @@
                     renderParticipants(participants, votesRevealed, currentUserVote);
 
                     // Enable/disable buttons based on vote revealed status
-                    revealButton.disabled = votesRevealed; // Disable reveal if already revealed
-                    resetButton.disabled = !votesRevealed; // Enable reset only when votes are revealed
+                    // AND toggle visibility
+                    if (votesRevealed) {
+                        revealButton.classList.add('hidden');
+                        resetButton.classList.remove('hidden');
+                        revealButton.disabled = true;
+                        resetButton.disabled = false;
+                    } else {
+                        revealButton.classList.remove('hidden');
+                        resetButton.classList.add('hidden');
+                        revealButton.disabled = false;
+                        resetButton.disabled = true;
+                    }
 
                 } else {
                     // The room data doesn't exist (e.g., deleted)
@@ -680,21 +728,27 @@
                      </div>
             </div>
 
-             <div id="resultsSummary" class="hidden mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+             <div id="resultsSummary" class="hidden p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                 <h3 class="text-lg font-semibold mb-2 text-center">Durchschnitt</h3>
                 </div>
 
+             <!-- Moved Reveal Button here -->
+            <div class="flex justify-center my-2">
+                <button id="revealButton" class="min-w-[110px] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
+                    Aufdecken
+                </button>
+             </div>
 
             <div class="mb-6">
                 <h2 class="text-lg font-semibold mb-3 text-gray-700">Deine Stimme:</h2>
                 <div id="votingCards" class="flex flex-wrap justify-center gap-2">
+                    <!-- Voting cards will be rendered here by JS -->
                     </div>
             </div>
 
+            <!-- Container now only holds Reset button (conditionally visible) -->
             <div class="flex flex-col sm:flex-row justify-center gap-3 mt-6">
-                <button id="revealButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
-                    Aufdecken
-                </button>
-                <button id="resetButton" disabled class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
+                <button id="resetButton" class="hidden bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
                     Zurücksetzen
                 </button>
             </div>
