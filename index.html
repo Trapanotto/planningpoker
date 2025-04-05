@@ -166,6 +166,8 @@
                         // Room specified in hash doesn't exist
                         showMessage(`Raum "${currentRoomId}" nicht gefunden. Du kannst einen neuen Raum erstellen.`); // Translated
                         window.location.hash = ''; // Clear the invalid hash
+                        sessionStorage.removeItem('planningPokerUserId'); // Clear stored user ID if returning to create screen
+                        sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
                         showScreen(createRoomScreen); // <<< Show create screen (hides loader)
                     }
                 }).catch(error => {
@@ -173,6 +175,8 @@
                     console.error("Error checking room:", error);
                     showMessage("Fehler beim Prüfen des Raums."); // Translated
                     window.location.hash = ''; // Clear hash on error
+                    sessionStorage.removeItem('planningPokerUserId'); // Clear stored user ID if returning to create screen
+                    sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
                     showScreen(createRoomScreen); // <<< Show create screen (hides loader)
                 });
             } else {
@@ -181,6 +185,7 @@
                 currentUserId = null;
                 currentUserName = null;
                 sessionStorage.removeItem('planningPokerUserId'); // Clear stored user ID if returning to create screen
+                sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
                 showScreen(createRoomScreen); // <<< Show create screen (hides loader)
             }
         }
@@ -228,6 +233,9 @@
 
             currentUserName = displayName;
             currentUserId = getUserId(); // Get existing or generate new user ID for the session
+
+            // <<< ADD: Store username in sessionStorage >>>
+            sessionStorage.setItem('planningPokerUserName', currentUserName);
 
             // Reference to the specific user within the room's participants list in Firebase
             const userRef = ref(database, `rooms/${currentRoomId}/participants/${currentUserId}`);
@@ -446,6 +454,9 @@
             const selectedVote = event.target.dataset.vote; // Get vote value from clicked card
             const userRef = ref(database, `rooms/${currentRoomId}/participants/${currentUserId}`);
 
+            // <<< ADD: Get username reliably (e.g., from sessionStorage) >>>
+            const userNameFromStorage = sessionStorage.getItem('planningPokerUserName') || 'Unknown'; // Fallback added
+
             // Check current vote to see if user is deselecting
             get(userRef).then(snapshot => {
                 const currentData = snapshot.val();
@@ -459,7 +470,9 @@
                 }
 
                 // Update user's vote and status in Firebase
+                // <<< ADD name to the update object >>>
                 update(userRef, {
+                    name: userNameFromStorage, // Ensure name is present/re-added
                     vote: newVote,
                     hasVoted: newHasVoted
                 }).catch(error => {
@@ -584,8 +597,9 @@
                          participantsListener = null;
                     }
                     window.location.hash = ''; // Go back to create screen URL
-                    showScreen(createRoomScreen); // Show the create screen UI
                     sessionStorage.removeItem('planningPokerUserId'); // Clear user ID
+                    sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
+                    showScreen(createRoomScreen); // Show the create screen UI
                 }
             }, (error) => {
                 // Handle errors during listening (e.g., permission denied, network issues)
