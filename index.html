@@ -260,7 +260,7 @@
         });
 
         // Render the list of participants based on Firebase data
-        function renderParticipants(participantsData, votesRevealed, currentUserVote) {
+        function renderParticipants(participantsData, votesRevealed, currentUserVote, currentUserIdFromListener) {
             participantsList.innerHTML = ''; // Clear previous participant list
             if (!participantsData) return; // Exit if no participant data
 
@@ -321,7 +321,7 @@
                 // Style the name (above the card)
                 nameElement.textContent = participant.name;
                 // Always use dark text, add bold for current user, match card width
-                nameElement.className = `text-xs font-medium text-center w-16 truncate mb-1 text-gray-800 ${userId === currentUserId ? 'font-bold' : ''}`; // Smaller text, w-16
+                nameElement.className = `text-xs font-medium text-center w-16 truncate mb-1 text-gray-800 ${userId === currentUserIdFromListener ? 'font-bold' : ''}`; // Smaller text, w-16
 
                 // Style the card (holds only the status) - SMALLER SIZE
                 participantElement.className = `flex items-center justify-center p-1 rounded-lg shadow-sm w-16 h-24 border-2 ${cardBgBorderClasses}`; // Smaller w-16 h-24, p-1
@@ -549,19 +549,17 @@
                     const participants = roomData.participants || {}; // Get participants, default to empty object
                     const votesRevealed = roomData.votesRevealed || false; // Get revealed status
 
-                    // <<< NEU: Benutzernamen wiederherstellen, falls nötig >>>
-                    if (currentUserId && !currentUserName && participants[currentUserId]) {
-                        currentUserName = participants[currentUserId].name;
-                        console.log('Restored username from Firebase:', currentUserName);
-                    }
-                    // <<< ENDE NEU >>>
+                    // <<< Hole userId *innerhalb* des Listeners >>>
+                    const currentUserIdFromStorage = getUserId();
 
                     // Get the current user's vote from the latest snapshot data
-                    const currentUserData = participants[currentUserId];
+                    // Verwende die gerade geholte ID, um die Votedaten des aktuellen Benutzers zu finden
+                    const currentUserData = participants[currentUserIdFromStorage]; 
                     const currentUserVote = currentUserData ? currentUserData.vote : null;
 
                     // Re-render the participants list and voting cards with the new data
-                    renderParticipants(participants, votesRevealed, currentUserVote);
+                    // <<< Übergebe die aktuelle ID an die Render-Funktion >>>
+                    renderParticipants(participants, votesRevealed, currentUserVote, currentUserIdFromStorage);
 
                     // Enable/disable buttons based on vote revealed status
                     // AND toggle visibility
