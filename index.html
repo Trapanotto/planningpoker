@@ -102,17 +102,15 @@
             return Math.random().toString(36).substring(2, 9);
         }
 
-        // Get User ID from Session Storage or generate a new one
-        function getUserId() {
-            let userId = sessionStorage.getItem('planningPokerUserId');
-            if (!userId) {
-                // Using push().key generates a unique ID similar to Firebase's auto-IDs
-                // This ensures a unique ID for the session
-                userId = push(ref(database)).key;
-                sessionStorage.setItem('planningPokerUserId', userId);
-            }
-            return userId;
-        }
+        // Get User ID from Session Storage or generate a new one - <<< REMOVED Session Logic >>>
+        // function getUserId() {
+        //     let userId = sessionStorage.getItem('planningPokerUserId');
+        //     if (!userId) {
+        //         userId = push(ref(database)).key;
+        //         sessionStorage.setItem('planningPokerUserId', userId);
+        //     }
+        //     return userId;
+        // }
 
         // Update UI based on current screen (which view to show)
         function showScreen(screenToShow) {
@@ -233,10 +231,13 @@
             }
 
             currentUserName = displayName;
-            currentUserId = getUserId(); // Get existing or generate new user ID for the session
+            // <<< MODIFIED: Always generate a new unique ID for this connection instance >>>
+            currentUserId = push(ref(database)).key; 
 
-            // <<< ADD: Store username in sessionStorage >>>
+            // Store chosen username in sessionStorage for potential reuse
             sessionStorage.setItem('planningPokerUserName', currentUserName);
+            // <<< REMOVED storing userId in sessionStorage >>>
+            // sessionStorage.setItem('planningPokerUserId', currentUserId); 
 
             // Reference to the specific user within the room's participants list in Firebase
             const userRef = ref(database, `rooms/${currentRoomId}/participants/${currentUserId}`);
@@ -599,11 +600,12 @@
                     const votesRevealed = roomData.votesRevealed || false; // Get revealed status
 
                     // <<< Hole userId *innerhalb* des Listeners >>>
-                    const currentUserIdFromStorage = getUserId();
+                    // <<< REMOVED: We get currentUserId when joining, not from storage here >>>
+                    // const currentUserIdFromStorage = getUserId(); 
 
                     // Get the current user's vote from the latest snapshot data
-                    // Verwende die gerade geholte ID, um die Votedaten des aktuellen Benutzers zu finden
-                    const currentUserData = participants[currentUserIdFromStorage]; 
+                    // Verwende die globale currentUserId Variable, um die Votedaten zu finden
+                    const currentUserData = participants[currentUserId]; 
                     const currentUserVote = currentUserData ? currentUserData.vote : null;
 
                     // <<< Added: Check for stale participants >>>
@@ -612,7 +614,7 @@
                     Object.keys(participants).forEach(userId => {
                         const participant = participants[userId];
                         // Check if participant exists, has a lastSeen time, is not the current user, and is stale
-                        if (participant && participant.lastSeen && userId !== currentUserIdFromStorage && (now - participant.lastSeen > staleThreshold)) {
+                        if (participant && participant.lastSeen && userId !== currentUserId && (now - participant.lastSeen > staleThreshold)) {
                             console.log(`Removing stale participant: ${participant.name} (ID: ${userId})`);
                             const staleUserRef = ref(database, `rooms/${roomId}/participants/${userId}`);
                             remove(staleUserRef).catch(error => {
@@ -624,7 +626,8 @@
 
                     // Re-render the participants list and voting cards with the new data
                     // (Stale users will be visually removed when Firebase confirms the deletion and triggers this listener again)
-                    renderParticipants(participants, votesRevealed, currentUserVote, currentUserIdFromStorage);
+                    // <<< Pass the current global currentUserId >>>
+                    renderParticipants(participants, votesRevealed, currentUserVote, currentUserId);
 
                     // Enable/disable buttons based on vote revealed status
                     // AND toggle visibility
@@ -672,6 +675,8 @@
                      clearInterval(heartbeatIntervalId);
                      heartbeatIntervalId = null;
                  }
+                 sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
+                showScreen(createRoomScreen); // <<< Show create screen (hides loader)
             });
         }
 
@@ -738,6 +743,14 @@
             if (event.key === 'Enter') {
                 event.preventDefault();
                 joinRoomButton.click();
+            }
+        });
+
+        // <<< Added: Restore display name from session storage >>>
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedName = sessionStorage.getItem('planningPokerUserName');
+            if (savedName && displayNameInput) {
+                displayNameInput.value = savedName;
             }
         });
 
