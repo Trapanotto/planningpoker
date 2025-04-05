@@ -610,6 +610,9 @@
                      participantsListener(); // Detach listener on error
                      participantsListener = null;
                  }
+                 // <<< ADD: Clear stored user data on listener error >>>
+                 sessionStorage.removeItem('planningPokerUserId'); 
+                 sessionStorage.removeItem('planningPokerUserName');
             });
         }
 
