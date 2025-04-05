@@ -265,7 +265,7 @@
                             console.warn("Heartbeat update failed:", error); // Log warning, don't stop interval
                         });
                     }
-                }, 15000); // Update every 15 seconds
+                }, 5000); // Update every 5 seconds
 
                 // Show the main poker room view
                 showScreen(pokerRoomScreen);
@@ -298,7 +298,7 @@
 
                 // <<< Added: Check if participant is stale (but not the current user) >>>
                 const now = Date.now(); 
-                const staleThreshold = 90 * 1000; // Use the same threshold as the removal logic
+                const staleThreshold = 30 * 1000; // Use the same threshold as the removal logic
                 const isStale = participant.lastSeen && (now - participant.lastSeen > staleThreshold);
 
                 // Only render if the participant is NOT stale OR if it IS the current user
