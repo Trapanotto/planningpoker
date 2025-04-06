@@ -101,15 +101,17 @@
             return Math.random().toString(36).substring(2, 9);
         }
 
-        // Get User ID from Session Storage or generate a new one - <<< REMOVED Session Logic >>>
-        // function getUserId() {
-        //     let userId = sessionStorage.getItem('planningPokerUserId');
-        //     if (!userId) {
-        //         userId = push(ref(database)).key;
-        //         sessionStorage.setItem('planningPokerUserId', userId);
-        //     }
-        //     return userId;
-        // }
+        // Get User ID from Session Storage or generate a new one
+        function getUserId() {
+            let userId = sessionStorage.getItem('planningPokerUserId');
+            if (!userId) {
+                // Using push().key generates a unique ID similar to Firebase's auto-IDs
+                // This ensures a unique ID for the session
+                userId = push(ref(database)).key;
+                sessionStorage.setItem('planningPokerUserId', userId);
+            }
+            return userId;
+        }
 
         // Update UI based on current screen (which view to show)
         function showScreen(screenToShow) {
@@ -230,13 +232,10 @@
             }
 
             currentUserName = displayName;
-            // <<< MODIFIED: Always generate a new unique ID for this connection instance >>>
-            currentUserId = push(ref(database)).key; 
+            currentUserId = getUserId(); // Get existing or generate new user ID for the session
 
-            // Store chosen username in sessionStorage for potential reuse
+            // <<< ADD: Store username in sessionStorage >>>
             sessionStorage.setItem('planningPokerUserName', currentUserName);
-            // <<< REMOVED storing userId in sessionStorage >>>
-            // sessionStorage.setItem('planningPokerUserId', currentUserId); 
 
             // Reference to the specific user within the room's participants list in Firebase
             const userRef = ref(database, `rooms/${currentRoomId}/participants/${currentUserId}`);
@@ -281,7 +280,6 @@
             // Loop through each participant ID found in Firebase data
             participantIds.forEach(userId => {
                 const participant = participantsData[userId];
-                if (!participant) return; // Skip if participant data is missing for some reason
 
                 // --- Create elements ---
                 const participantContainer = document.createElement('div'); // New container for name + card
@@ -347,7 +345,6 @@
                 participantElement.appendChild(statusElement);    // Status inside card
                 participantContainer.appendChild(participantElement); // Card below name
                 participantsList.appendChild(participantContainer); // Add the whole container to the list
-
             });
 
             // Update and show the results summary section if votes are revealed
@@ -567,30 +564,28 @@
                     const votesRevealed = roomData.votesRevealed || false; // Get revealed status
 
                     // <<< Hole userId *innerhalb* des Listeners >>>
-                    // <<< REMOVED: We get currentUserId when joining, not from storage here >>>
-                    // const currentUserIdFromStorage = getUserId(); 
+                    const currentUserIdFromStorage = getUserId();
 
                     // Get the current user's vote from the latest snapshot data
-                    // Verwende die globale currentUserId Variable, um die Votedaten zu finden
-                    const currentUserData = participants[currentUserId]; 
+                    // Verwende die gerade geholte ID, um die Votedaten des aktuellen Benutzers zu finden
+                    const currentUserData = participants[currentUserIdFromStorage]; 
                     const currentUserVote = currentUserData ? currentUserData.vote : null;
 
                     // Re-render the participants list and voting cards with the new data
-                    // (Stale users will be visually removed when Firebase confirms the deletion and triggers this listener again)
-                    // <<< Pass the current global currentUserId >>>
-                    renderParticipants(participants, votesRevealed, currentUserVote, currentUserId);
+                    // <<< Übergebe die aktuelle ID an die Render-Funktion >>>
+                    renderParticipants(participants, votesRevealed, currentUserVote, currentUserIdFromStorage);
 
                     // Enable/disable buttons based on vote revealed status
-                    // <<< REVERTED: Use hidden class again for primary action clarity >>>
+                    // AND toggle visibility
                     if (votesRevealed) {
                         revealButton.classList.add('hidden');
                         resetButton.classList.remove('hidden');
-                        revealButton.disabled = true;  // Keep disabled state for correctness
+                        revealButton.disabled = true;
                         resetButton.disabled = false;
                     } else {
                         revealButton.classList.remove('hidden');
                         resetButton.classList.add('hidden');
-                        revealButton.disabled = false; // Keep disabled state for correctness
+                        revealButton.disabled = false;
                         resetButton.disabled = true;
                     }
 
@@ -615,10 +610,6 @@
                      participantsListener(); // Detach listener on error
                      participantsListener = null;
                  }
-                 // <<< ADD: Clear stored user data on listener error >>>
-                 sessionStorage.removeItem('planningPokerUserId'); 
-                 sessionStorage.removeItem('planningPokerUserName');
-                 showScreen(createRoomScreen); // <<< Show create screen (hides loader)
             });
         }
 
@@ -688,22 +679,6 @@
             }
         });
 
-        // <<< Added: Restore display name from session storage >>>
-        window.addEventListener('DOMContentLoaded', () => {
-            const savedName = sessionStorage.getItem('planningPokerUserName');
-            if (savedName && displayNameInput) {
-                displayNameInput.value = savedName;
-            }
-        });
-
-        // <<< NEW: Attempt to clear username on page unload/hide >>>
-        window.addEventListener('pagehide', () => {
-            // This is not guaranteed to run reliably, but it's an attempt
-            // to clear the name when the user leaves, potentially forcing re-entry on return.
-            console.log("pagehide event triggered - clearing username from session storage.");
-            sessionStorage.removeItem('planningPokerUserName');
-        });
-
     </script>
 
     <style>
@@ -769,7 +744,7 @@
                 </button>
             </div>
 
-            <div class="mb-2">
+            <div class="mb-6">
                 <h2 class="text-lg font-semibold mb-3 text-gray-700">Teilnehmer:</h2>
                 <div id="participantsList" class="flex flex-wrap gap-3 pb-2 overflow-x-auto">
                     <div class="flex flex-col items-center p-2 rounded-lg shadow-sm bg-white min-w-[80px] animate-pulse-simple">
