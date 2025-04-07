@@ -863,10 +863,18 @@
 
         // --- Initialization ---
         function initializeApp() {
+            // Ensure this runs only once per page load cycle after auth
+            if (window.initializeAppCalled) return;
+            window.initializeAppCalled = true;
+            console.log('initializeApp called with user ID:', currentUserId);
+
             lucide.createIcons();
             let hash = window.location.hash.substring(1);
-            const lastRoomId = localStorage.getItem('planningPokerLastRoomId');
-            currentUserId = localStorage.getItem('planningPokerUserId');
+            const lastRoomId = localStorage.getItem('planningPokerLastRoomId'); 
+            // Remove userId loading here - it's set by onAuthStateChanged before calling this
+            // currentUserId = localStorage.getItem('planningPokerUserId'); 
+
+            let initialRoomIdToLoad = null; 
 
             if (hash) {
                  console.log('Hash found, loading room:', hash);
@@ -918,6 +926,8 @@
         }
 
         // Sign in anonymously and then initialize the app
+        // OLD CODE:
+        /*
         auth.signInAnonymously()
             .then(() => {
                  console.log('Signed in anonymously with UID:', auth.currentUser.uid);
@@ -926,10 +936,32 @@
             })
             .catch((error) => {
                  console.error("Anonymous sign-in failed:", error);
-                 // Handle sign-in error (e.g., show an error message) - crucial for app function
-                 showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null); // Show persistent error
-                 document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>'; // Replace body
+                 showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null); 
+                 document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
             });
+        */
+
+        // NEW CODE: Use onAuthStateChanged to handle initialization
+        auth.onAuthStateChanged(user => {
+            console.log('Auth state changed. User:', user ? user.uid : 'null');
+            if (user) {
+                // User is signed in.
+                currentUserId = user.uid;
+                // Initialize the app logic only once after we have a user ID
+                if (!window.initializeAppCalled) {
+                    initializeApp();
+                }
+            } else {
+                // User is signed out or session expired. Try to sign in again.
+                console.log('No authenticated user found, attempting anonymous sign-in...');
+                auth.signInAnonymously()
+                    .catch(error => {
+                         console.error("Re-attempting anonymous sign-in failed:", error);
+                         showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null); 
+                         document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
+                    });
+            }
+        });
 
         // Function to handle loading room checks and showing enter name screen
         function loadRoomForJoining(roomId) {
