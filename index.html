@@ -120,7 +120,7 @@
         <h1 class="text-2xl font-bold mb-4 text-gray-700">Planning Poker</h1>
         <p class="text-gray-600 mb-3">Neue Sitzung erstellen</p>
         <input type="text" id="room-name-input" placeholder="Raumname eingeben" class="w-full px-4 py-2 border rounded-md mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <button id="create-room-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
+        <button id="create-room-button" class="w-full bg-blue-400 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-md transition duration-200">
             Raum erstellen
         </button>
 
@@ -358,6 +358,13 @@
 
                 // Store last room ID in localStorage
                 localStorage.setItem('planningPokerLastRoomId', currentRoomId);
+
+                // *** Change URL to use parameter ***
+                const nextURL = `${window.location.pathname}?room=${currentRoomId}`;
+                const nextTitle = document.title; // Keep current title
+                const nextState = { roomId: currentRoomId };
+                // Use replaceState to avoid adding back button entry for the hash version
+                history.replaceState(nextState, nextTitle, nextURL); 
 
                 showScreen(pokerRoomScreen);
                 renderVotingCards();
@@ -805,7 +812,8 @@
             cleanupRoomListeners();
             currentRoomId = null; currentUsername = null;
             localStorage.removeItem('planningPokerLastRoomId');
-            window.location.hash = '';
+            // Navigate to base path, clearing params and hash
+            history.pushState(null, document.title, window.location.pathname);
             showScreen(createRoomScreen);
         }
 
@@ -836,38 +844,38 @@
         // --- Initialization ---
         function initializeApp() {
             lucide.createIcons();
+
+            // --- Determine Room ID --- 
+            let initialRoomIdToLoad = null;
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
             let hash = window.location.hash.substring(1);
             const lastRoomId = localStorage.getItem('planningPokerLastRoomId'); 
             currentUserId = localStorage.getItem('planningPokerUserId');
 
-            let initialRoomIdToLoad = null;
-
-            if (hash) {
-                // If there is a hash in the URL, always use it
+            if (roomParam) {
+                console.log('Found room parameter:', roomParam);
+                initialRoomIdToLoad = roomParam;
+                // Clear hash if parameter exists (parameter takes precedence)
+                if (hash) window.location.hash = ''; 
+            } else if (hash) {
+                console.log('Found hash:', hash);
                 initialRoomIdToLoad = hash;
+            } else if (lastRoomId && currentUserId) {
+                console.log('No param/hash, using last known room:', lastRoomId);
+                initialRoomIdToLoad = lastRoomId;
             } else {
-                // No hash in the URL. 
-                // Only use localStorage if we think the user might be reloading after a disconnect
-                // (Simple check: do we have a userId? More robust checks are complex)
-                if (lastRoomId && currentUserId) {
-                    // Potentially disconnected state, try using last room ID
-                     console.log('No hash, attempting to use last known room:', lastRoomId);
-                     initialRoomIdToLoad = lastRoomId;
-                     // We don't set the hash here
-                } else {
-                     // No hash, no stored IDs -> definitely wants to create/start fresh
-                     console.log('No hash and no stored IDs found.');
-                     // Clear any potentially stale lastRoomId just in case
-                     localStorage.removeItem('planningPokerLastRoomId');
-                }
+                 console.log('No room identifier found.');
+                 localStorage.removeItem('planningPokerLastRoomId');
             }
 
+            // --- Load Room or Show Create --- 
             if (initialRoomIdToLoad) {
                 currentRoomId = initialRoomIdToLoad; // Set currentRoomId EARLY
                 console.log('Attempting to load room:', currentRoomId);
                 showScreen(enterNameScreen); // Show screen before async checks
 
-                // Now proceed with checks for kicked/existence
+                // Proceed with checks for kicked/existence
                  database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
                     if (snapshot.exists() && snapshot.val() === true) {
                         // Kicked - clear stored ID and show kicked screen
@@ -906,11 +914,21 @@
                        joinRoomButton.disabled = true;
                  });
             } else {
-                // No hash and no last room ID, show create screen
+                // No room identified, show create screen
                 showScreen(createRoomScreen);
             }
 
-             // Revised hashchange listener
+            // --- Event Listeners --- 
+
+             // Handle browser back/forward potentially changing the room param
+             window.addEventListener('popstate', (event) => {
+                console.log('popstate event', event.state);
+                // Simple approach: If the URL changes significantly, just reload
+                // More complex: Re-run initializeApp or parts of it based on new URL
+                window.location.reload(); 
+            });
+
+             // hashchange listener (primarily for clearing hash if needed)
              window.addEventListener('hashchange', () => {
                 const newHash = window.location.hash.substring(1);
                 console.log('Hash changed event. New hash:', newHash, 'Current Room ID was:', currentRoomId);
