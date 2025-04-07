@@ -124,15 +124,14 @@
         <button id="create-room-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
             Raum erstellen
         </button>
-        <!-- Remove button to check for last room -->
-        <!-- 
+        <!-- Add button to check for last room -->
         <button id="check-last-room-button" class="hidden mt-4 text-sm text-blue-600 hover:underline">
             Letzten Raum beitreten?
         </button>
-         -->
+
     </div>
 
-    <!-- Re-add Rejoin/Create Choice Screen -->
+    <!-- Rejoin/Create Choice Screen -->
     <div id="rejoin-or-create-screen" class="hidden bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center mt-4">
         <h1 class="text-2xl font-bold mb-4 text-gray-700">Planning Poker</h1>
         <p class="text-gray-600 mb-6">Du warst zuletzt im Raum: <strong id="last-room-display">...</strong></p>
@@ -248,7 +247,6 @@
         const enterNameScreen = document.getElementById('enter-name-screen');
         const pokerRoomScreen = document.getElementById('poker-room-screen');
         const kickedOutScreen = document.getElementById('kicked-out-screen');
-        const rejoinOrCreateScreen = document.getElementById('rejoin-or-create-screen');
         const disconnectedScreen = document.getElementById('disconnected-screen');
         const loadingScreen = document.getElementById('loading-screen'); // Add loading screen
 
@@ -256,9 +254,6 @@
         const createRoomButton = document.getElementById('create-room-button');
         const displayNameInput = document.getElementById('display-name-input');
         const joinRoomButton = document.getElementById('join-room-button');
-        const rejoinLastRoomButton = document.getElementById('rejoin-last-room-button');
-        const forceCreateNewButton = document.getElementById('force-create-new-button');
-        const lastRoomDisplay = document.getElementById('last-room-display');
 
         const roomTitle = document.getElementById('room-title');
         const participantsList = document.getElementById('participants-list');
@@ -300,7 +295,6 @@
             enterNameScreen.classList.add('hidden');
             pokerRoomScreen.classList.add('hidden');
             kickedOutScreen.classList.add('hidden');
-            rejoinOrCreateScreen.classList.add('hidden');
             disconnectedScreen.classList.add('hidden');
             loadingScreen.classList.add('hidden');
             if (screenToShow !== loadingScreen) {
@@ -320,7 +314,7 @@
         async function handleCreateRoom() {
             const roomName = roomNameInput.value.trim();
             if (!roomName) {
-                showInPageAlert('Bitte gib einen Raumnamen ein.', 'error');
+                showInPageAlert('Bitte gib einen Raumnamen ein.', 'error'); // Use new alert
                 return;
             }
 
@@ -334,15 +328,11 @@
                     participants: {},
                     kickedUsers: {}
                 });
-                // Update URL hash and show name entry screen
-                window.location.hash = currentRoomId; // Use hash
-                // showScreen(enterNameScreen); // Let hashchange or load logic handle this?
-                // For simplicity, just show screen directly after setting hash
-                loadRoomForJoining(currentRoomId); // Call load function directly
-
+                // Redirect to include query parameter
+                 window.location.href = `${window.location.pathname}?room=${currentRoomId}`; 
             } catch (error) {
                 console.error("Error creating room:", error);
-                showInPageAlert('Raum konnte nicht erstellt werden. Bitte versuche es erneut.', 'error');
+                showInPageAlert('Raum konnte nicht erstellt werden. Bitte versuche es erneut.', 'error'); // Use new alert
             }
         }
 
@@ -350,11 +340,11 @@
         async function handleJoinRoom() {
             const displayName = displayNameInput.value.trim();
             if (!displayName) {
-                showInPageAlert('Bitte gib deinen Anzeigenamen ein.', 'error');
+                showInPageAlert('Bitte gib deinen Anzeigenamen ein.', 'error'); // Use new alert
                 return;
             }
             if (!currentRoomId) {
-                showInPageAlert('Ungültige Raum-ID.', 'error');
+                showInPageAlert('Ungültige Raum-ID.', 'error'); // Use new alert
                 showScreen(createRoomScreen); // Go back to start
                 window.location.hash = '';
                 return;
@@ -401,9 +391,6 @@
                 // Set up listener for kicked status
                 listenForKickedStatus();
 
-                // Store last room ID in localStorage
-                localStorage.setItem('planningPokerLastRoomId', currentRoomId); 
-
                 showScreen(pokerRoomScreen);
                 renderVotingCards();
                 // Initialize Lucide icons after showing the screen
@@ -411,7 +398,7 @@
 
             } catch (error) {
                 console.error("Error joining room:", error);
-                showInPageAlert('Beitritt zum Raum fehlgeschlagen. Der Raum existiert möglicherweise nicht oder es gab ein Verbindungsproblem.', 'error');
+                showInPageAlert('Beitritt zum Raum fehlgeschlagen. Der Raum existiert möglicherweise nicht oder es gab ein Verbindungsproblem.', 'error'); // Use new alert
                 window.location.hash = ''; // Clear invalid hash
                 showScreen(createRoomScreen);
             }
@@ -574,7 +561,7 @@
                 }
             } catch (error) {
                 console.error("Error casting vote:", error);
-                showInPageAlert('Stimme konnte nicht abgegeben werden.', 'error');
+                showInPageAlert('Stimme konnte nicht abgegeben werden.', 'error'); // Use new alert
             }
         }
 
@@ -599,7 +586,7 @@
                 await roomRef.update({ revealCountdownEnd: countdownEndTime });
             } catch (error) {
                 console.error("Error initiating reveal:", error);
-                showInPageAlert('Starten des Aufdeckens fehlgeschlagen.', 'error');
+                showInPageAlert('Starten des Aufdeckens fehlgeschlagen.', 'error'); // Use new alert
                 revealButton.disabled = false;
             }
         }
@@ -668,7 +655,7 @@
                 resultsSummarySection.classList.add('hidden');
             } catch (error) {
                 console.error("Error resetting votes:", error);
-                showInPageAlert('Zurücksetzen der Stimmen fehlgeschlagen.', 'error');
+                showInPageAlert('Zurücksetzen der Stimmen fehlgeschlagen.', 'error'); // Use new alert
             }
         }
 
@@ -681,7 +668,7 @@
                 console.log(`User ${userIdToKick} kicked.`);
             } catch (error) {
                 console.error("Error kicking user:", error);
-                showInPageAlert('Benutzer konnte nicht entfernt werden.', 'error');
+                showInPageAlert('Benutzer konnte nicht entfernt werden.', 'error'); // Use new alert (updated text)
             }
         }
 
@@ -828,13 +815,13 @@
 
         // Copy invite link to clipboard
         function copyInviteLink() {
-            // Generate link with hash
-            const link = `${window.location.origin}${window.location.pathname}#${currentRoomId}`;
+            // Generate link with query parameter
+            const link = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}`;
             navigator.clipboard.writeText(link).then(() => {
-                showInPageAlert('Einladungslink kopiert!', 'success', 2000);
+                showInPageAlert('Einladungslink kopiert!', 'success', 2000); // Use success alert
             }).catch(err => {
                 console.error('Failed to copy link: ', err);
-                showInPageAlert('Link konnte nicht kopiert werden.', 'error');
+                showInPageAlert('Link konnte nicht kopiert werden.', 'error'); // Use new alert
             });
         }
 
@@ -852,14 +839,18 @@
 
         function cleanupAndRedirect() {
             cleanupRoomListeners();
-            // Clear last room ID from localStorage on explicit redirect/cleanup
-            localStorage.removeItem('planningPokerLastRoomId');
-
+            // Clear last room ID from DB on explicit redirect/cleanup
+            /*
+            if (currentUserId) {
+                database.ref(`/userProfiles/${currentUserId}/lastRoomId`).remove()
+                    .catch(err => console.error('Error clearing lastRoomId from DB:', err));
+            }
+            */
             currentRoomId = null; currentUsername = null;
             document.title = 'Planning Poker'; 
-            window.location.hash = ''; // Clear hash
-            showScreen(createRoomScreen); // Show create screen directly
-            // window.location.href = window.location.pathname; // Don't force reload
+            // Navigate to base path without query params or hash
+            window.location.href = window.location.pathname; 
+            // showScreen(createRoomScreen); // Let page reload handle showing create screen
         }
 
 
@@ -869,24 +860,6 @@
         revealButton.addEventListener('click', handleRevealVotes);
         resetButton.addEventListener('click', handleReset);
         copyLinkButton.addEventListener('click', copyInviteLink);
-        rejoinLastRoomButton.addEventListener('click', () => {
-            console.log('User chose to join last room.');
-            const roomToJoin = localStorage.getItem('planningPokerLastRoomId');
-            if(roomToJoin) {
-                // Set the hash and let the init/hashchange logic handle it
-                window.location.hash = roomToJoin;
-                // Call directly as hashchange might not fire if hash is the same
-                 loadRoomForJoining(roomToJoin); 
-            } else {
-                 showInPageAlert("Konnte letzten Raum nicht finden.", "error");
-                 showScreen(createRoomScreen);
-            }
-        });
-        forceCreateNewButton.addEventListener('click', () => {
-            console.log('User chose to create a new room.');
-            localStorage.removeItem('planningPokerLastRoomId'); 
-            showScreen(createRoomScreen);
-        });
 
         // Add Enter key listener for room name input
         roomNameInput.addEventListener('keydown', (event) => {
@@ -905,44 +878,20 @@
         });
 
         // --- Initial Script Execution --- 
-         window.appLogicInitialized = false;
-         window.showingRejoinPrompt = false; // Flag for rejoin prompt
-
-         // Check localStorage immediately on script load
-         const initialLastRoomId = localStorage.getItem('planningPokerLastRoomId');
-         // User ID check is less critical here as auth handles it, but keep for context
-         const initialUserId = localStorage.getItem('planningPokerUserId'); 
-
-         if (initialLastRoomId && initialUserId) {
-             console.log('Immediate check found lastRoomId:', initialLastRoomId);
-             window.showingRejoinPrompt = true;
-             // Fetch room name immediately and show prompt
-             const rejoinScreen = document.getElementById('rejoin-or-create-screen');
-             const rejoinDisplay = document.getElementById('last-room-display');
-             if (rejoinScreen && rejoinDisplay) { 
-                  database.ref(`rooms/${initialLastRoomId}/roomName`).once('value')
-                     .then(snapshot => {
-                         let displayName = initialLastRoomId;
-                         if (snapshot.exists() && snapshot.val()) {
-                             displayName = snapshot.val();
-                         }
-                         rejoinDisplay.textContent = displayName;
-                         showScreen(rejoinScreen); 
-                     })
-                     .catch(error => {
-                          console.error("Immediate fetch room name error:", error);
-                          rejoinDisplay.textContent = initialLastRoomId;
-                          showScreen(rejoinScreen);
-                     });
-             } else {
-                  console.error("Rejoin screen elements not found immediately!");
-                  window.showingRejoinPrompt = false; 
-             }
-         } else {
-              console.log('Immediate check: No lastRoomId or no userId found in localStorage.');
+         let initialRoomIdFromParam = null; // Variable to store potentially lost param
+         try {
+            const initialUrlParams = new URLSearchParams(window.location.search);
+            initialRoomIdFromParam = initialUrlParams.get('room');
+            if(initialRoomIdFromParam) {
+                console.log('Initial check found room param:', initialRoomIdFromParam);
+            }
+         } catch (e) {
+             console.error("Error parsing initial URL params:", e);
          }
 
-        // Auth Listener - Handles setting userId and triggering app logic
+         window.appLogicInitialized = false; 
+
+        // Auth Listener - Primary driver for starting the app logic
         auth.onAuthStateChanged(user => {
             console.log('Auth state changed. User:', user ? user.uid : 'null');
             if (user) {
@@ -983,46 +932,41 @@
         // Renamed from initializeApp - contains logic dependent on auth being ready
         // This function is now primarily called by onAuthStateChanged AFTER user is confirmed
         function setupApplicationLogic() {
-            if (window.appLogicInitialized) return;
-            window.appLogicInitialized = true;
+            // Removed flag check - let onAuthStateChanged control calls
             console.log('Setup application logic starting for user:', currentUserId);
 
             if (!currentUserId) {
                  console.error("CRITICAL: setupApplicationLogic called without currentUserId!");
-                 showScreen(createRoomScreen); 
+                 showScreen(createRoomScreen); // Fallback if something went wrong
                  return;
             }
 
-            lucide.createIcons(); 
-            let hash = window.location.hash.substring(1);
+            lucide.createIcons(); // Ensure icons available
+            
+            let roomIdToLoad = null;
 
-            // Logic simplified: if hash exists, load it. 
-            // If no hash, the initial script check would have shown rejoin prompt or done nothing.
-            // If initial check did nothing (no last room), show create screen.
-            if (hash) {
-                 console.log('Auth ready, Hash found, loading room directly:', hash);
-                 loadRoomForJoining(hash);
-            } else if (!window.showingRejoinPrompt) { // Only show create if rejoin wasn't triggered
-                 console.log('Auth ready, No hash, no rejoin prompt shown, showing create screen.');
+            // Prioritize the initially captured param
+            if (initialRoomIdFromParam) {
+                roomIdToLoad = initialRoomIdFromParam;
+                console.log('Using initially captured room param:', roomIdToLoad);
+            } else {
+                // If no initial param, check current URL as fallback
+                 const currentUrlParams = new URLSearchParams(window.location.search);
+                 roomIdToLoad = currentUrlParams.get('room');
+                 if (roomIdToLoad) {
+                      console.log('Using current URL room param:', roomIdToLoad);
+                 }
+            }
+            
+
+            if (roomIdToLoad) {
+                 console.log('Proceeding to load room:', roomIdToLoad);
+                 loadRoomForJoining(roomIdToLoad);
+            } else {
+                 // No room param, show create screen
+                 console.log('No room query param, showing create screen.');
                  showScreen(createRoomScreen);
             }
-
-             // Reinstate hashchange listener
-             window.addEventListener('hashchange', () => {
-                const newHash = window.location.hash.substring(1);
-                console.log('Hash changed event. New hash:', newHash, 'Current Room ID was:', currentRoomId);
-                if (!newHash && currentRoomId) {
-                     console.log("Hash cleared externally while in a room, redirecting to create screen.");
-                     if (createRoomScreen.classList.contains('hidden') && kickedOutScreen.classList.contains('hidden') && disconnectedScreen.classList.contains('hidden')) {
-                          cleanupAndRedirect();
-                     }
-                } 
-                // Handle navigating to a different room via hash change
-                 else if (newHash && newHash !== currentRoomId) {
-                     console.log("Hash changed to a different room ID, reloading...");
-                     window.location.reload(); // Simplest way to handle navigating to new room link
-                 }
-            });
         }
 
         // Function to handle loading room checks and showing enter name screen
@@ -1037,33 +981,30 @@
             database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
                 if (snapshot.exists() && snapshot.val() === true) {
                     // Kicked - clear stored ID and show kicked screen
-                    localStorage.removeItem('planningPokerLastRoomId');
                     showScreen(kickedOutScreen);
                 } else {
                     // Not kicked, check if room exists
                     database.ref(`rooms/${currentRoomId}`).once('value', roomSnapshot => {
                         if (roomSnapshot.exists()) {
                             // Room exists, user not kicked - stay on enterNameScreen
-                            // Ensure the hash matches the loaded room
-                             if (window.location.hash.substring(1) !== currentRoomId) {
-                                 // Use replaceState to avoid adding to history
-                                 history.replaceState(null, '', `#${currentRoomId}`);
-                             }
+                            // Ensure the query param matches the loaded room using replaceState
+                            const urlParams = new URLSearchParams(window.location.search);
+                            if (urlParams.get('room') !== currentRoomId) {
+                                 history.replaceState(null, '', `${window.location.pathname}?room=${currentRoomId}`);
+                            }
                         } else {
                             // Room doesn't exist - show error, clear IDs, stay on screen, disable join
                             showInPageAlert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.", 'error');
-                            window.location.hash = ''; // Clear hash
+                            history.replaceState(null, '', window.location.pathname); // Clear query param
                             currentRoomId = null; // Clear internal ID
-                            localStorage.removeItem('planningPokerLastRoomId');
                             joinRoomButton.disabled = true;
                         }
                     }).catch(error => {
                          // Error checking room - show error, clear IDs, stay on screen, disable join
                          console.error("Error checking room existence:", error);
                          showInPageAlert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut.", 'error');
-                         window.location.hash = ''; // Clear hash
+                         history.replaceState(null, '', window.location.pathname); // Clear query param
                          currentRoomId = null;
-                         localStorage.removeItem('planningPokerLastRoomId');
                          joinRoomButton.disabled = true;
                     });
                 }
@@ -1071,9 +1012,8 @@
                   // Error checking kicked status - show error, clear IDs, stay on screen, disable join
                   console.error("Error checking kicked status:", error);
                   showInPageAlert("Konnte den Status nicht überprüfen. Bitte versuche es erneut.", 'error');
-                   window.location.hash = ''; // Clear hash
+                   history.replaceState(null, '', window.location.pathname); // Clear query param
                    currentRoomId = null;
-                   localStorage.removeItem('planningPokerLastRoomId');
                    joinRoomButton.disabled = true;
                    // Make sure we don't proceed without a user ID if auth failed initially
                    if (!auth.currentUser) {
