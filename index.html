@@ -870,107 +870,65 @@
             }
         });
 
-        // --- Initialization ---
-        function initializeApp() {
-            // Ensure this runs only once per page load cycle after auth
-            if (window.initializeAppCalled) return;
-            window.initializeAppCalled = true;
-            console.log('initializeApp called with user ID:', currentUserId);
+        // --- Initial Script Execution --- 
 
-            lucide.createIcons();
-            let hash = window.location.hash.substring(1);
-            const lastRoomId = localStorage.getItem('planningPokerLastRoomId'); 
-            // Remove userId loading here - it's set by onAuthStateChanged before calling this
-            // currentUserId = localStorage.getItem('planningPokerUserId'); 
+        window.appLogicInitialized = false; // Flag for setup function
+        window.showingRejoinPrompt = false; // Flag for rejoin prompt
 
-            let initialRoomIdToLoad = null; 
+        // Check localStorage immediately on script load
+        const initialLastRoomId = localStorage.getItem('planningPokerLastRoomId');
+        const initialUserId = localStorage.getItem('planningPokerUserId'); // Also check if user ID exists
 
-            if (hash) {
-                 console.log('Hash found, loading room:', hash);
-                 loadRoomForJoining(hash); // Use the extracted function
-            } else if (lastRoomId && currentUserId) {
-                console.log('No hash, found last room ID:', lastRoomId);
-                // Fetch room name before showing choice screen
-                database.ref(`rooms/${lastRoomId}/roomName`).once('value')
+        if (initialLastRoomId && initialUserId) {
+            console.log('Immediate check found lastRoomId:', initialLastRoomId);
+            window.showingRejoinPrompt = true;
+            // Fetch room name immediately and show prompt
+            const rejoinScreen = document.getElementById('rejoin-or-create-screen');
+            const rejoinDisplay = document.getElementById('last-room-display');
+            if (rejoinScreen && rejoinDisplay) { // Ensure elements exist before DB call
+                 database.ref(`rooms/${initialLastRoomId}/roomName`).once('value')
                     .then(snapshot => {
-                        let displayName = lastRoomId; // Default to ID
+                        let displayName = initialLastRoomId;
                         if (snapshot.exists() && snapshot.val()) {
                             displayName = snapshot.val();
                         }
-                        console.log('Displaying rejoin choice for room:', displayName);
-                        lastRoomDisplay.textContent = displayName; 
-                        showScreen(rejoinOrCreateScreen);
+                        rejoinDisplay.textContent = displayName;
+                        showScreen(rejoinScreen); // Show screen explicitly
                     })
                     .catch(error => {
-                         console.error("Error fetching last room name:", error);
-                         lastRoomDisplay.textContent = lastRoomId; // Fallback to ID
-                         showScreen(rejoinOrCreateScreen);
+                         console.error("Immediate fetch room name error:", error);
+                         rejoinDisplay.textContent = initialLastRoomId;
+                         showScreen(rejoinScreen);
                     });
-                 // Stop initialization here, wait for user choice via buttons or screen display from DB fetch
             } else {
-                 // No hash and no last room ID, show create screen
-                 console.log('No hash or last room ID, showing create screen.');
-                 showScreen(createRoomScreen);
+                 console.error("Rejoin screen elements not found immediately!");
+                 // Fallback: Show create screen if elements aren't ready? Or wait?
+                 // For now, let auth handle it, but log the error.
+                 window.showingRejoinPrompt = false; // Revert flag if elements missing
             }
-
-             // Revised hashchange listener
-             window.addEventListener('hashchange', () => {
-                const newHash = window.location.hash.substring(1);
-                console.log('Hash changed event. New hash:', newHash, 'Current Room ID was:', currentRoomId);
-
-                // Only redirect to create if hash becomes empty AND we *were* previously in a known room
-                if (!newHash && currentRoomId) {
-                     console.log("Hash cleared externally while in a room, redirecting to create screen.");
-                     // Make sure we are not already on create/kicked screens before redirecting
-                     if (createRoomScreen.classList.contains('hidden') && kickedOutScreen.classList.contains('hidden')) {
-                          cleanupAndRedirect();
-                     }
-                } 
-                // Optional: Handle navigating to a different room? 
-                // else if (newHash && currentRoomId && newHash !== currentRoomId) {
-                //    console.log("Navigating to a different room hash...");
-                //    cleanupAndRedirect(); // Or reload the page?
-                // }
-            });
+        } else {
+             console.log('Immediate check: No lastRoomId or no userId found in localStorage.');
+             // If no rejoin prompt shown, auth will eventually show create screen
         }
 
-        // Sign in anonymously and then initialize the app
-        // OLD CODE:
-        /*
-        auth.signInAnonymously()
-            .then(() => {
-                 console.log('Signed in anonymously with UID:', auth.currentUser.uid);
-                 currentUserId = auth.currentUser.uid; // Set global variable
-                 initializeApp(); // Initialize the rest of the app
-            })
-            .catch((error) => {
-                 console.error("Anonymous sign-in failed:", error);
-                 showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null); 
-                 document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
-            });
-        */
-
-        // NEW CODE: Use onAuthStateChanged to handle initialization
+        // Auth Listener - Handles setting userId and triggering app logic if needed
         auth.onAuthStateChanged(user => {
-            console.log('Auth state changed. User:', user ? user.uid : 'null', 'App Initialized:', window.initializeAppCalled);
+            console.log('Auth state changed. User:', user ? user.uid : 'null', 'Rejoin Prompt Shown:', window.showingRejoinPrompt, 'App Logic Initialized:', window.appLogicInitialized);
             if (user) {
-                // User is signed in.
                 currentUserId = user.uid;
-                // Initialize the app logic only once after we have a user ID
-                if (!window.initializeAppCalled) {
-                    initializeApp();
+                // Initialize the main app logic ONLY if we didn't already show the rejoin prompt
+                if (!window.showingRejoinPrompt && !window.appLogicInitialized) {
+                    setupApplicationLogic();
                 }
             } else {
-                // User is signed out.
-                currentUserId = null; // Clear user ID
-                // If app was already initialized, it means user was logged in and now is not.
-                if (window.initializeAppCalled) {
+                currentUserId = null;
+                if (window.appLogicInitialized) {
                      console.log('User signed out after app initialization.');
-                     cleanupRoomListeners(); // Clean up DB listeners if any
+                     cleanupRoomListeners();
                      showScreen(disconnectedScreen);
-                } else {
-                    // App not initialized yet, try to sign in anonymously.
-                    console.log('No authenticated user found, attempting anonymous sign-in...');
+                } else if (!window.showingRejoinPrompt) {
+                    // Only sign in if we are not waiting for rejoin prompt interaction
+                    console.log('No authenticated user found, not showing rejoin prompt, attempting sign-in...');
                     auth.signInAnonymously()
                         .catch(error => {
                              console.error("Re-attempting anonymous sign-in failed:", error);
@@ -1035,6 +993,51 @@
                        showScreen(createRoomScreen); // Fallback if auth is lost somehow
                    }
              });
+        }
+
+        // Renamed from initializeApp - contains logic dependent on auth being ready
+        function setupApplicationLogic() {
+            // Ensure this runs only once per page load cycle after auth
+            if (window.appLogicInitialized) return;
+            window.appLogicInitialized = true;
+            console.log('setupApplicationLogic called with user ID:', currentUserId);
+
+            lucide.createIcons();
+            let hash = window.location.hash.substring(1);
+            // Removed localStorage check here - handled earlier or via rejoin prompt
+
+            if (hash) {
+                 console.log('Hash found, loading room:', hash);
+                 loadRoomForJoining(hash); // Use the extracted function
+            } 
+            // Note: If no hash, and we didn't show the rejoin prompt earlier,
+            // this implies we should show the create screen.
+            // However, the initial check before auth should handle the create case too.
+            // Consider adding a fallback here if needed, but likely covered by initial check.
+             else if (!window.showingRejoinPrompt) { 
+                 console.log('No hash, no rejoin prompt shown, showing create screen.');
+                 showScreen(createRoomScreen);
+             }
+
+             // Revised hashchange listener
+             window.addEventListener('hashchange', () => {
+                const newHash = window.location.hash.substring(1);
+                console.log('Hash changed event. New hash:', newHash, 'Current Room ID was:', currentRoomId);
+
+                // Only redirect to create if hash becomes empty AND we *were* previously in a known room
+                if (!newHash && currentRoomId) {
+                     console.log("Hash cleared externally while in a room, redirecting to create screen.");
+                     // Make sure we are not already on create/kicked screens before redirecting
+                     if (createRoomScreen.classList.contains('hidden') && kickedOutScreen.classList.contains('hidden')) {
+                          cleanupAndRedirect();
+                     }
+                } 
+                // Optional: Handle navigating to a different room? 
+                // else if (newHash && currentRoomId && newHash !== currentRoomId) {
+                //    console.log("Navigating to a different room hash...");
+                //    cleanupAndRedirect(); // Or reload the page?
+                // }
+            });
         }
     </script>
 </body>
