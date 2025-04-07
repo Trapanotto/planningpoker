@@ -57,6 +57,8 @@
         const messageText = document.getElementById('messageText');
         const closeMessageButton = document.getElementById('closeMessageButton');
         const copyLinkButton = document.getElementById('copyLinkButton'); // Added
+        const countdownDisplay = document.getElementById('countdownDisplay'); // <<< Get countdown element
+        const countdownText = countdownDisplay?.querySelector('span'); // <<< Get span inside
 
         // --- Constants ---
         const VOTE_OPTIONS = ['0', '0.5', '1', '2', '3', '5', '8', '?', '☕'];
@@ -209,6 +211,7 @@
             set(roomRef, {
                 roomName: roomName,
                 votesRevealed: false, // Votes start hidden
+                countdownValue: null, // <<< ADDED: Initialize countdown value
                 createdAt: serverTimestamp() // Optional: record when the room was created
             }).then(() => {
                 // Successfully created room, navigate to it by setting the hash
@@ -597,42 +600,56 @@
             });
         }
 
-        // Handle Reveal Votes button click with countdown
+        // Handle Reveal Votes button click with Firebase-synced countdown
         revealButton.addEventListener('click', () => {
             if (!currentRoomId || revealButton.disabled) return; // Prevent action if no room or already processing
 
-            let countdown = 3;
-            const originalText = revealButton.textContent; // Store original text
-            
-            isRevealCountdownActive = true; // <<< Set flag
-            revealButton.disabled = true; // Disable button during countdown
-            revealButton.textContent = countdown; // Show initial countdown value
+            const roomRef = ref(database, `rooms/${currentRoomId}`);
+            const startCountdownValue = 3;
 
-            const intervalId = setInterval(() => {
-                countdown--;
-                if (countdown > 0) {
-                    revealButton.textContent = countdown;
-                } else {
-                    clearInterval(intervalId); // Stop the countdown
+            // Immediately disable button locally for responsiveness
+            revealButton.disabled = true;
 
-                    // --- Trigger Firebase Update --- 
-                    const roomRef = ref(database, `rooms/${currentRoomId}`);
-                    update(roomRef, { votesRevealed: true })
-                        .catch(error => {
-                             console.error("Error revealing votes:", error);
-                             showMessage("Fehler beim Aufdecken der Stimmen."); // Show error
-                             // Optionally re-enable button immediately on error, though listener might override
-                             // revealButton.disabled = false; 
-                        })
-                        .finally(() => {
-                             // Restore original text (button might be hidden by listener already)
-                             revealButton.textContent = originalText;
-                             isRevealCountdownActive = false; // <<< Clear flag
-                             // Listener will handle disabling/hiding based on new Firebase state
-                        });
-                    // -------------------------------
-                }
-            }, 1000); // Update every 1 second
+            // 1. Set initial countdown value in Firebase
+            update(roomRef, { countdownValue: startCountdownValue })
+                .then(() => {
+                    // 2. Start interval ONLY on the client that clicked
+                    let localCountdown = startCountdownValue;
+                    const intervalId = setInterval(() => {
+                        localCountdown--;
+
+                        if (localCountdown > 0) {
+                            // 3. Decrement value in Firebase
+                            update(roomRef, { countdownValue: localCountdown })
+                                .catch(error => {
+                                     console.error("Error updating countdown:", error);
+                                     clearInterval(intervalId); // Stop on error
+                                     // Attempt to reset countdown state on error
+                                     update(roomRef, { countdownValue: null }).catch(()=>{});
+                                     // Button state will be corrected by the listener
+                                });
+                        } else {
+                            // 4. Countdown finished: Reveal votes and clear countdown
+                            clearInterval(intervalId);
+                            update(roomRef, {
+                                votesRevealed: true,
+                                countdownValue: null
+                            }).catch(error => {
+                                 console.error("Error revealing votes after countdown:", error);
+                                 showMessage("Fehler beim Aufdecken der Stimmen.");
+                                 // Attempt to clear countdown state even on error
+                                 update(roomRef, { countdownValue: null }).catch(()=>{});
+                            });
+                            // Listener will handle UI changes (hiding countdown, showing results etc.)
+                        }
+                    }, 1000); // Update every 1 second
+                })
+                .catch(error => {
+                    console.error("Error starting countdown:", error);
+                    showMessage("Fehler beim Starten des Countdowns.");
+                     // Re-enable button if initial Firebase update fails
+                    revealButton.disabled = false;
+                });
         });
 
         // Handle Reset Votes / Start New Vote button click
@@ -641,6 +658,7 @@
             const roomRef = ref(database, `rooms/${currentRoomId}`);
             const updates = {}; // Object to hold all updates for atomic operation
             updates['votesRevealed'] = false; // Hide votes again
+            updates['countdownValue'] = null; // <<< ADDED: Reset countdown value
 
              // Need to reset vote and hasVoted status for all participants
             const participantsRef = ref(database, `rooms/${currentRoomId}/participants`);
@@ -653,7 +671,7 @@
                         updates[`participants/${userId}/hasVoted`] = false;
                     });
                 }
-                 // Apply all updates (reveal status and participant resets) at once
+                 // Apply all updates (reveal status, countdown reset, and participant resets) at once
                 update(roomRef, updates)
                     .catch(error => console.error("Error resetting votes:", error));
                 // The onValue listener will automatically update the UI
@@ -674,112 +692,145 @@
              }
 
             const roomRef = ref(database, `rooms/${roomId}`);
-            // Set up the real-time listener using onValue
+            const countdownDisplay = document.getElementById('countdownDisplay'); // <<< Get countdown element
+            const countdownText = countdownDisplay?.querySelector('span'); // <<< Get span inside
+
             participantsListener = onValue(roomRef, (snapshot) => {
-                const currentUserIdFromStorage = getUserId(); // <<< Get user ID inside listener
+                const currentUserIdFromStorage = getUserId(); 
 
-                if (snapshot.exists()) {
-                    // Data exists for the room
-                    const roomData = snapshot.val();
-                    const participants = roomData.participants || {}; // Get participants, default to empty object
-                    const votesRevealed = roomData.votesRevealed || false; // Get revealed status
-
-                    // Get the current user's data from the latest snapshot
-                    const currentUserData = participants[currentUserIdFromStorage];
-
-                    // --- Check if current user still exists in the room ---
-                    if (!currentUserData && currentUserIdFromStorage) { // <<< User ID exists but no data for them
-                         // showMessage("Du wurdest aus dem Raum entfernt oder der Teilnehmerdatensatz fehlt."); // Translated: You were removed...
-                         // cleanupAndRedirect(); // <<< OLD: Immediately redirect
-                         cleanupBeforeKick(); // <<< NEW: Clean up listeners/state
-                         showScreen(kickedOutScreen); // <<< NEW: Show kicked screen
-                         return; // Stop further processing for this user
-                    }
-                    // --------------------------------------------------------
-
-
-                    // User exists, proceed with rendering
-                    const currentUserVote = currentUserData ? currentUserData.vote : null;
-
-                    // Re-render the participants list and voting cards with the new data
-                    renderParticipants(participants, votesRevealed, currentUserVote, currentUserIdFromStorage);
-
-                    // Enable/disable buttons based on vote revealed status
-                    // AND toggle visibility
-                    if (votesRevealed) {
-                        revealButton.classList.add('hidden');
-                        resetButton.classList.remove('hidden');
-                        revealButton.disabled = true;
-                        resetButton.disabled = false;
-                    } else {
-                        revealButton.classList.remove('hidden');
-                        resetButton.classList.add('hidden');
-                        // <<< Prevent re-enabling if countdown active >>>
-                        if (!isRevealCountdownActive) { 
-                            revealButton.disabled = false;
-                        }
-                        // Disable reset button if votes aren't revealed OR if there are no participants yet
-                        resetButton.disabled = true; // Always disable if not revealed
-                     }
-
-                } else {
-                    // The room data doesn't exist (e.g., deleted)
-                    showMessage("Der Raum existiert nicht mehr."); // Translated
-                    cleanupAndRedirect(); // <<< Call cleanup function
+                if (!snapshot.exists()) {
+                     showMessage("Der Raum existiert nicht mehr."); 
+                     cleanupAndRedirect(); 
+                     return;
                 }
-            }, (error) => {
-                // Handle errors during listening (e.g., permission denied, network issues)
-                console.error("Error listening to room changes:", error);
-                showMessage("Verbindungsfehler. Bitte aktualisiere die Seite."); // Translated
-                 if (participantsListener) {
-                     participantsListener(); // Detach listener on error
-                     participantsListener = null;
-                 }
-                 // Maybe redirect on error too? Optional.
-                 // cleanupAndRedirect();
-            });
 
-            // --- Temporarily commenting out the animation listener attachment ---
-              const animationsRef = ref(database, `rooms/${roomId}/animations`);
-              animationsListener = onChildAdded(animationsRef, (snapshot) => {
-                  const currentUserIdFromStorage = getUserId(); // Get current user ID inside listener
- 
-                  if (snapshot.exists()) {
-                      const animationData = snapshot.val();
-                      console.log("Received animation event:", animationData); // <<< ADDED: Logging
- 
-                      // --- Check Sender ---
-                      // Only play if the event was sent by someone else
-                      if (animationData.senderUserId && animationData.senderUserId !== currentUserIdFromStorage) {
-                         console.log("Playing animation sent by other user"); // <<< ADDED: Logging
-                         // playEmojiAnimationLocally(animationData.targetUserId, animationData.emojiChar);
-                         const targetContainer = document.getElementById(`container-${animationData.targetUserId}`); // <<< Find target element
-                         console.log('[listenToRoomChanges] Found target for remote play:', targetContainer); // <<< ADD LOG
-                         if (targetContainer) {
-                            triggerEmojiAnimation(targetContainer, animationData.emojiChar); // <<< Play locally
-                         } else {
-                            console.warn("Target container not found for animation", animationData.targetUserId);
-                         }
-                      } else {
-                          console.log("Ignoring own animation event or missing senderId"); // <<< ADDED: Logging
-                      }
-                      // --- End Check Sender ---
- 
-                      // Temporarily removed timestamp check for debugging
-                        // <<< This opens the inner block comment
-                      // const now = Date.now();
-                      // const eventTime = animationData.timestamp;
-                      // if (eventTime && (now - eventTime > 5000)) {
-                      //      if (now - eventTime > 60000) { remove(snapshot.ref).catch(()=>{}); }
-                      //      return;
-                      //  }
-                       // <<< This closes the OUTER block comment prematurely
- 
+                 const roomData = snapshot.val();
+                 const participants = roomData.participants || {}; 
+                 const votesRevealed = roomData.votesRevealed || false; 
+                 const countdownValue = roomData.countdownValue; // <<< Get countdown value
+
+                 const currentUserData = participants[currentUserIdFromStorage];
+
+                 if (!currentUserData && currentUserIdFromStorage) { 
+                      cleanupBeforeKick(); 
+                      showScreen(kickedOutScreen); 
+                      return; 
+                 }
+                 
+                 const currentUserVote = currentUserData ? currentUserData.vote : null;
+
+                 // --- UI Logic based on state ---
+                 
+                 // 1. Handle Countdown Active State
+                 if (typeof countdownValue === 'number' && countdownValue > 0) {
+                     // revealButton.classList.add('hidden'); // <<< REMOVE: Keep button visible
+                     resetButton.classList.add('hidden');
+                     resultsSummary.classList.add('hidden'); // Hide results during countdown
+                     if (countdownDisplay) countdownDisplay.classList.add('hidden'); // <<< ADD: Ensure separate display is hidden
+                     if (revealButton) { // <<< ADD: Update button text
+                         revealButton.textContent = countdownValue;
+                         revealButton.disabled = true; // Ensure reveal stays disabled
+                     }
+                     // resetButton.disabled = true; // <<< REMOVE: Reset button is hidden anyway
+
+                     // Re-render participants normally (showing who voted, not the value)
+                     renderParticipants(participants, false, currentUserVote, currentUserIdFromStorage);
+                     // Optionally disable voting cards during countdown?
+                     // renderVotingCards(currentUserVote, true); // Pass a flag to disable
+
+                 // 2. Handle Votes Revealed State
+                 } else if (votesRevealed) {
+                     revealButton.classList.add('hidden'); // <<< Keep hidden when revealed
+                     resetButton.classList.remove('hidden');
+                     if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Hide countdown display
+
+                     if (revealButton) { // <<< ADD: Restore text and state
+                        revealButton.textContent = 'Aufdecken';
+                        revealButton.disabled = true;
+                     }
+                     resetButton.disabled = false;
+                     // Render participants WITH votes revealed
+                     renderParticipants(participants, true, currentUserVote, currentUserIdFromStorage);
+                     // Re-enable voting cards (or keep disabled based on UX choice)
+                     // renderVotingCards(currentUserVote, false);
+
+                 // 3. Handle Voting State (No countdown, Votes not revealed)
+                 } else {
+                     revealButton.classList.remove('hidden'); // <<< Ensure visible
+                     resetButton.classList.add('hidden');
+                     resultsSummary.classList.add('hidden'); // Ensure results are hidden
+                     if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Hide countdown display
+
+                     if (revealButton) { // <<< ADD: Restore text and state
+                        revealButton.textContent = 'Aufdecken';
+                        revealButton.disabled = false; // Enable reveal button
+                     }
+                     // resetButton.disabled = true; // <<< REMOVE: Reset is hidden
+
+                     // Render participants normally (showing who voted, not the value)
+                      renderParticipants(participants, false, currentUserVote, currentUserIdFromStorage);
+                      // Ensure voting cards are enabled
+                      // renderVotingCards(currentUserVote, false);
+                 }
+
+
+                 // <<< NOTE: The existing logic inside renderParticipants for showing results only if
+                 //     votesRevealed is true still works correctly. We are just controlling the
+                 //     overall UI state (buttons, countdown visibility) here based on the new flow. >>>
+
+             }, (error) => {
+                 // Handle errors during listening (e.g., permission denied, network issues)
+                 console.error("Error listening to room changes:", error);
+                 showMessage("Verbindungsfehler. Bitte aktualisiere die Seite."); // Translated
+                  if (participantsListener) {
+                      participantsListener(); // Detach listener on error
+                      participantsListener = null;
                   }
-              }, (error) => {
-                  console.error("Error listening for animations:", error);
-              });
-             
+                  // Maybe redirect on error too? Optional.
+                  // cleanupAndRedirect();
+             });
+
+             // --- Temporarily commenting out the animation listener attachment ---
+               const animationsRef = ref(database, `rooms/${roomId}/animations`);
+               animationsListener = onChildAdded(animationsRef, (snapshot) => {
+                   const currentUserIdFromStorage = getUserId(); // Get current user ID inside listener
+   
+                   if (snapshot.exists()) {
+                       const animationData = snapshot.val();
+                       console.log("Received animation event:", animationData); // <<< ADDED: Logging
+   
+                       // --- Check Sender ---
+                       // Only play if the event was sent by someone else
+                       if (animationData.senderUserId && animationData.senderUserId !== currentUserIdFromStorage) {
+                          console.log("Playing animation sent by other user"); // <<< ADDED: Logging
+                          // playEmojiAnimationLocally(animationData.targetUserId, animationData.emojiChar);
+                          const targetContainer = document.getElementById(`container-${animationData.targetUserId}`); // <<< Find target element
+                          console.log('[listenToRoomChanges] Found target for remote play:', targetContainer); // <<< ADD LOG
+                          if (targetContainer) {
+                             triggerEmojiAnimation(targetContainer, animationData.emojiChar); // <<< Play locally
+                          } else {
+                             console.warn("Target container not found for animation", animationData.targetUserId);
+                          }
+                       } else {
+                           console.log("Ignoring own animation event or missing senderId"); // <<< ADDED: Logging
+                       }
+                       // --- End Check Sender ---
+    
+                       // Temporarily removed timestamp check for debugging
+                         // <<< This opens the inner block comment
+                       // const now = Date.now();
+                       // const eventTime = animationData.timestamp;
+                       // if (eventTime && (now - eventTime > 5000)) {
+                       //      if (now - eventTime > 60000) { remove(snapshot.ref).catch(()=>{}); }
+                       //      return;
+                       //  }
+                        // <<< This closes the OUTER block comment prematurely
+    
+                   }
+               }, (error) => {
+                   console.error("Error listening for animations:", error);
+               });
+              
         }
 
         // Modify cleanupAndRedirect to also check before detaching animation listener
@@ -1300,6 +1351,12 @@
                     </svg>
                 </button>
             </div>
+
+            <!-- <<< NEW: Countdown Display Area >>> -->
+            <div id="countdownDisplay" class="hidden text-center my-4">
+                <span class="text-6xl font-bold text-blue-600"></span>
+            </div>
+            <!-- <<< END: Countdown Display Area >>> -->
 
             <div class="mb-6">
                 <h2 class="text-lg font-semibold mb-3 text-gray-700">Teilnehmer:</h2>
