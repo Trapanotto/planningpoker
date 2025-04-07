@@ -825,66 +825,82 @@
             const lastRoomId = sessionStorage.getItem('planningPokerLastRoomId');
             currentUserId = sessionStorage.getItem('planningPokerUserId'); // Ensure userId is loaded early
 
-            // If no hash, but we have a last room ID and user ID, try using that
-            if (!hash && lastRoomId && currentUserId) {
-                 console.log('No hash, attempting to use last known room:', lastRoomId);
-                 hash = lastRoomId;
-                 // Optionally update the URL hash, or just proceed internally
-                 window.location.hash = hash; // This makes it behave like opening a link
-            }
+            let initialRoomIdToLoad = null; // Determine the target room ID first
 
             if (hash) {
-                currentRoomId = hash;
-                 // Optimistically show Enter Name screen if there's a hash
-                 showScreen(enterNameScreen);
+                initialRoomIdToLoad = hash;
+            } else if (lastRoomId && currentUserId) {
+                console.log('No hash, attempting to use last known room:', lastRoomId);
+                initialRoomIdToLoad = lastRoomId;
+                // Don't set window.location.hash here - handle internally
+            }
 
+            if (initialRoomIdToLoad) {
+                currentRoomId = initialRoomIdToLoad; // Set currentRoomId EARLY
+                console.log('Attempting to load room:', currentRoomId);
+                showScreen(enterNameScreen); // Show screen before async checks
+
+                // Now proceed with checks for kicked/existence
                  database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
                     if (snapshot.exists() && snapshot.val() === true) {
+                        // Kicked - clear stored ID and show kicked screen
+                        sessionStorage.removeItem('planningPokerLastRoomId');
                         showScreen(kickedOutScreen);
                     } else {
                         // Not kicked, check if room exists
                         database.ref(`rooms/${currentRoomId}`).once('value', roomSnapshot => {
                             if (roomSnapshot.exists()) {
-                                // Room exists, stay on enterNameScreen (already shown)
-                                // Focus should be handled by showScreen
+                                // Room exists, user not kicked - stay on enterNameScreen
                             } else {
-                                // Room doesn't exist - show error, clear hash, stay on screen
+                                // Room doesn't exist - show error, clear IDs, stay on screen, disable join
                                 showInPageAlert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.", 'error');
-                                window.location.hash = '';
-                                currentRoomId = null; // Clear invalid ID
-                                joinRoomButton.disabled = true; // Disable join button
+                                window.location.hash = ''; // Clear hash if it was invalid
+                                currentRoomId = null; // Clear internal ID
+                                sessionStorage.removeItem('planningPokerLastRoomId');
+                                joinRoomButton.disabled = true;
                             }
                         }).catch(error => {
-                             // Error checking room - show error, clear hash, stay on screen
+                             // Error checking room - show error, clear IDs, stay on screen, disable join
                              console.error("Error checking room existence:", error);
                              showInPageAlert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut.", 'error');
                              window.location.hash = '';
                              currentRoomId = null;
-                             sessionStorage.removeItem('planningPokerLastRoomId'); // Clear stored ID on error
+                             sessionStorage.removeItem('planningPokerLastRoomId');
                              joinRoomButton.disabled = true;
                         });
                     }
                  }).catch(error => {
-                      // Error checking kicked status - show error, clear hash, stay on screen
+                      // Error checking kicked status - show error, clear IDs, stay on screen, disable join
                       console.error("Error checking kicked status:", error);
                       showInPageAlert("Konnte den Status nicht überprüfen. Bitte versuche es erneut.", 'error');
                        window.location.hash = '';
                        currentRoomId = null;
-                       sessionStorage.removeItem('planningPokerLastRoomId'); // Clear stored ID on error
+                       sessionStorage.removeItem('planningPokerLastRoomId');
                        joinRoomButton.disabled = true;
                  });
             } else {
-                // No hash, show create screen as normal
+                // No hash and no last room ID, show create screen
                 showScreen(createRoomScreen);
             }
+
+             // Revised hashchange listener
              window.addEventListener('hashchange', () => {
                 const newHash = window.location.hash.substring(1);
-                if (!newHash || (currentRoomId && newHash !== currentRoomId)) {
-                    if (createRoomScreen.classList.contains('hidden') && kickedOutScreen.classList.contains('hidden')) {
-                         console.log("Hash changed or cleared, redirecting to create screen.");
-                         cleanupAndRedirect();
-                    }
-                }
+                console.log('Hash changed event. New hash:', newHash, 'Current Room ID was:', currentRoomId);
+
+                // Only redirect to create if hash becomes empty AND we *were* previously in a known room
+                if (!newHash && currentRoomId) {
+                     console.log("Hash cleared externally while in a room, redirecting to create screen.");
+                     // Make sure we are not already on create/kicked screens before redirecting
+                     if (createRoomScreen.classList.contains('hidden') && kickedOutScreen.classList.contains('hidden')) {
+                          cleanupAndRedirect();
+                     }
+                } 
+                // Optional: Handle navigating to a different room? 
+                // else if (newHash && currentRoomId && newHash !== currentRoomId) {
+                //    console.log("Navigating to a different room hash...");
+                //    cleanupAndRedirect(); // Or reload the page?
+                // }
             });
         }
         initializeApp();
