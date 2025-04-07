@@ -203,7 +203,7 @@
 
         // --- Global Variables ---
         let currentRoomId = null;
-        let currentUserId = sessionStorage.getItem('planningPokerUserId');
+        let currentUserId = localStorage.getItem('planningPokerUserId');
         let currentUsername = null;
         let roomRef = null;
         let participantsRef = null;
@@ -321,10 +321,10 @@
 
             currentUsername = displayName;
 
-            // Generate or retrieve user ID
+            // Generate or retrieve user ID from localStorage
             if (!currentUserId) {
                 currentUserId = generateUserId();
-                sessionStorage.setItem('planningPokerUserId', currentUserId);
+                localStorage.setItem('planningPokerUserId', currentUserId);
             }
 
             try {
@@ -356,8 +356,8 @@
                 // Set up listener for kicked status
                 listenForKickedStatus();
 
-                // Store last room ID in session storage
-                sessionStorage.setItem('planningPokerLastRoomId', currentRoomId);
+                // Store last room ID in localStorage
+                localStorage.setItem('planningPokerLastRoomId', currentRoomId);
 
                 showScreen(pokerRoomScreen);
                 renderVotingCards();
@@ -422,8 +422,7 @@
                     console.log("Kicked status detected.");
                     showScreen(kickedOutScreen);
                     cleanupRoomListeners();
-                    sessionStorage.removeItem('planningPokerRoomId');
-                    sessionStorage.removeItem('planningPokerLastRoomId');
+                    localStorage.removeItem('planningPokerLastRoomId');
                 }
             }, (error) => {
                 console.error("Error listening for kicked status:", error);
@@ -448,8 +447,14 @@
                 voteCard.className = 'participant-vote-card';
 
                 if (revealed) {
-                    voteCard.textContent = participant.vote ?? '-';
-                    voteCard.classList.add('revealed');
+                    // If revealed, show vote or '-' if no vote was cast
+                    if (participant.vote != null) {
+                        voteCard.textContent = participant.vote;
+                        voteCard.classList.add('revealed'); // Apply blue style only if voted
+                    } else {
+                        voteCard.textContent = '-';
+                        voteCard.classList.remove('revealed', 'voted'); // Ensure default grey style
+                    }
                 } else {
                     if (participant.hasVoted) {
                         voteCard.innerHTML = '<i data-lucide="check" class="w-6 h-6"></i>'; // Use icon
@@ -691,14 +696,24 @@
             }
 
             // Calculate Min/Max and Check Consensus
+            const participantCount = Object.keys(participants).length;
+            const votedParticipants = Object.values(participants).filter(p => p.hasVoted === true);
+            const votedCount = votedParticipants.length;
+            const allVoted = participantCount > 0 && votedCount === participantCount;
+            let uniqueVotes = new Set();
+            if(votedCount > 0) {
+                uniqueVotes = new Set(votedParticipants.map(p => p.vote));
+            }
+
+            // Consensus requires everyone to have voted AND only one unique vote value exists
+            let consensusReached = allVoted && uniqueVotes.size === 1;
+
             let minVote = '-';
             let maxVote = '-';
-            let consensusReached = false;
             if (numericVotes.length > 0) {
-                minVote = Math.min(...numericVotes);
-                maxVote = Math.max(...numericVotes);
-                // Consensus is reached if all numeric votes are the same (min === max)
-                consensusReached = minVote === maxVote;
+                 minVote = Math.min(...numericVotes);
+                 maxVote = Math.max(...numericVotes);
+                 // Note: min/max are still calculated even if consensus (incl non-numeric) isn't reached
             }
 
             // Build HTML for the average/min/max/consensus section
@@ -789,7 +804,7 @@
         function cleanupAndRedirect() {
             cleanupRoomListeners();
             currentRoomId = null; currentUsername = null;
-            sessionStorage.removeItem('planningPokerLastRoomId');
+            localStorage.removeItem('planningPokerLastRoomId');
             window.location.hash = '';
             showScreen(createRoomScreen);
         }
@@ -822,8 +837,8 @@
         function initializeApp() {
             lucide.createIcons();
             let hash = window.location.hash.substring(1);
-            const lastRoomId = sessionStorage.getItem('planningPokerLastRoomId');
-            currentUserId = sessionStorage.getItem('planningPokerUserId'); // Ensure userId is loaded early
+            const lastRoomId = localStorage.getItem('planningPokerLastRoomId');
+            currentUserId = localStorage.getItem('planningPokerUserId');
 
             let initialRoomIdToLoad = null; // Determine the target room ID first
 
@@ -844,7 +859,7 @@
                  database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
                     if (snapshot.exists() && snapshot.val() === true) {
                         // Kicked - clear stored ID and show kicked screen
-                        sessionStorage.removeItem('planningPokerLastRoomId');
+                        localStorage.removeItem('planningPokerLastRoomId');
                         showScreen(kickedOutScreen);
                     } else {
                         // Not kicked, check if room exists
@@ -856,7 +871,7 @@
                                 showInPageAlert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.", 'error');
                                 window.location.hash = ''; // Clear hash if it was invalid
                                 currentRoomId = null; // Clear internal ID
-                                sessionStorage.removeItem('planningPokerLastRoomId');
+                                localStorage.removeItem('planningPokerLastRoomId');
                                 joinRoomButton.disabled = true;
                             }
                         }).catch(error => {
@@ -865,7 +880,7 @@
                              showInPageAlert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut.", 'error');
                              window.location.hash = '';
                              currentRoomId = null;
-                             sessionStorage.removeItem('planningPokerLastRoomId');
+                             localStorage.removeItem('planningPokerLastRoomId');
                              joinRoomButton.disabled = true;
                         });
                     }
@@ -875,7 +890,7 @@
                       showInPageAlert("Konnte den Status nicht überprüfen. Bitte versuche es erneut.", 'error');
                        window.location.hash = '';
                        currentRoomId = null;
-                       sessionStorage.removeItem('planningPokerLastRoomId');
+                       localStorage.removeItem('planningPokerLastRoomId');
                        joinRoomButton.disabled = true;
                  });
             } else {
