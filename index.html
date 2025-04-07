@@ -692,47 +692,49 @@
              }
 
             const roomRef = ref(database, `rooms/${roomId}`);
-            const countdownDisplay = document.getElementById('countdownDisplay'); // <<< Get countdown element
-            const countdownText = countdownDisplay?.querySelector('span'); // <<< Get span inside
 
             participantsListener = onValue(roomRef, (snapshot) => {
-                const currentUserIdFromStorage = getUserId(); 
+                const currentUserIdFromStorage = getUserId();
 
                 if (!snapshot.exists()) {
-                     showMessage("Der Raum existiert nicht mehr."); 
-                     cleanupAndRedirect(); 
+                     showMessage("Der Raum existiert nicht mehr.");
+                     cleanupAndRedirect();
                      return;
                 }
 
                  const roomData = snapshot.val();
-                 const participants = roomData.participants || {}; 
-                 const votesRevealed = roomData.votesRevealed || false; 
+                 const participants = roomData.participants || {};
+                 const votesRevealed = roomData.votesRevealed || false;
                  const countdownValue = roomData.countdownValue; // <<< Get countdown value
 
                  const currentUserData = participants[currentUserIdFromStorage];
 
-                 if (!currentUserData && currentUserIdFromStorage) { 
-                      cleanupBeforeKick(); 
-                      showScreen(kickedOutScreen); 
-                      return; 
+                 if (!currentUserData && currentUserIdFromStorage) {
+                      cleanupBeforeKick();
+                      showScreen(kickedOutScreen);
+                      return;
                  }
-                 
+
                  const currentUserVote = currentUserData ? currentUserData.vote : null;
 
                  // --- UI Logic based on state ---
-                 
+
+                 // <<< ADD element lookup INSIDE the callback >>>
+                 const countdownDisplay = document.getElementById('countdownDisplay');
+                 const countdownText = countdownDisplay?.querySelector('span');
+
+
                  // 1. Handle Countdown Active State
                  if (typeof countdownValue === 'number' && countdownValue > 0) {
-                     // revealButton.classList.add('hidden'); // <<< REMOVE: Keep button visible
+                     revealButton.classList.add('hidden');
                      resetButton.classList.add('hidden');
                      resultsSummary.classList.add('hidden'); // Hide results during countdown
-                     if (countdownDisplay) countdownDisplay.classList.add('hidden'); // <<< ADD: Ensure separate display is hidden
-                     if (revealButton) { // <<< ADD: Update button text
-                         revealButton.textContent = countdownValue;
-                         revealButton.disabled = true; // Ensure reveal stays disabled
+                     if (countdownDisplay && countdownText) {
+                         countdownText.textContent = countdownValue;
+                         countdownDisplay.classList.remove('hidden');
                      }
-                     // resetButton.disabled = true; // <<< REMOVE: Reset button is hidden anyway
-
+                     revealButton.disabled = true; // Ensure reveal stays disabled
+                     resetButton.disabled = true; // Ensure reset stays disabled
                      // Re-render participants normally (showing who voted, not the value)
                      renderParticipants(participants, false, currentUserVote, currentUserIdFromStorage);
                      // Optionally disable voting cards during countdown?
@@ -740,14 +742,11 @@
 
                  // 2. Handle Votes Revealed State
                  } else if (votesRevealed) {
-                     revealButton.classList.add('hidden'); // <<< Keep hidden when revealed
+                     revealButton.classList.add('hidden');
                      resetButton.classList.remove('hidden');
                      if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Hide countdown display
-
-                     if (revealButton) { // <<< ADD: Restore text and state
-                        revealButton.textContent = 'Aufdecken';
-                        revealButton.disabled = true;
-                     }
+                     
+                     revealButton.disabled = true;
                      resetButton.disabled = false;
                      // Render participants WITH votes revealed
                      renderParticipants(participants, true, currentUserVote, currentUserIdFromStorage);
@@ -756,16 +755,13 @@
 
                  // 3. Handle Voting State (No countdown, Votes not revealed)
                  } else {
-                     revealButton.classList.remove('hidden'); // <<< Ensure visible
+                     revealButton.classList.remove('hidden');
                      resetButton.classList.add('hidden');
                      resultsSummary.classList.add('hidden'); // Ensure results are hidden
                      if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Hide countdown display
 
-                     if (revealButton) { // <<< ADD: Restore text and state
-                        revealButton.textContent = 'Aufdecken';
-                        revealButton.disabled = false; // Enable reveal button
-                     }
-                     // resetButton.disabled = true; // <<< REMOVE: Reset is hidden
+                     revealButton.disabled = false; // Enable reveal button
+                     resetButton.disabled = true; // Disable reset button
 
                      // Render participants normally (showing who voted, not the value)
                       renderParticipants(participants, false, currentUserVote, currentUserIdFromStorage);
