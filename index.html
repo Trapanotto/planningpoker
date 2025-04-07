@@ -971,26 +971,34 @@
             console.log('Auth state changed. User:', user ? user.uid : 'null');
             if (user) {
                 currentUserId = user.uid;
-                // We have a user, now determine the initial screen state
-                 setupApplicationLogic(); // Call the main logic function
+                // Initialize the main app logic if it hasn't run yet
+                if (!window.appLogicInitialized) {
+                    setupApplicationLogic();
+                }
             } else {
                 // No user currently authenticated
                 currentUserId = null;
-                if (loadingScreen.classList.contains('hidden')) {
-                     // If the loading screen was already hidden, it means we were logged in
-                     // and now got disconnected/logged out.
-                     console.log('User signed out after app initialization.');
+                // Check if the main app logic was *ever* successfully initialized
+                if (window.appLogicInitialized) {
+                     // If yes, it means user was logged in and interacting, then lost auth
+                     console.log('User signed out after app initialization was complete.');
                      cleanupRoomListeners();
                      showScreen(disconnectedScreen);
                 } else {
+                     // App logic never finished initializing, probably initial load or failed sign-in attempt.
                      // Still on loading screen, meaning initial auth failed or user is new.
-                     // Attempt anonymous sign-in.
-                     console.log('Initial auth state: No user. Attempting anonymous sign-in...');
+                     console.log('Initial auth state: No user. App logic not yet initialized. Attempting anonymous sign-in...');
                      auth.signInAnonymously()
                         .catch(error => {
                             console.error("Anonymous sign-in failed:", error);
                             showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null);
-                            loadingScreen.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
+                             // Ensure loading screen exists before trying to modify it
+                            const loadingEl = document.getElementById('loading-screen');
+                            if (loadingEl) {
+                                loadingEl.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
+                            } else {
+                                document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
+                            }
                         });
                 }
             }
