@@ -431,7 +431,14 @@
                     return; // Kicked status handled by listenForKickedStatus
                 }
 
+                // Update room title H1
                 roomTitle.textContent = roomData.roomName || 'Planning Poker';
+                
+                // Update document title if in the poker room
+                if (!pokerRoomScreen.classList.contains('hidden')) {
+                     document.title = (roomData.roomName ? `${roomData.roomName} - ` : '') + 'Planning Poker';
+                }
+
                 renderParticipants(roomData.participants || {}, roomData.revealed || false);
                 updateVotingCardsSelection(roomData.participants[currentUserId]?.vote);
                 updateActionButtons(roomData.participants || {}, roomData.revealed || false, roomData.revealCountdownEnd);
@@ -842,6 +849,7 @@
                     .catch(err => console.error('Error clearing lastRoomId from DB:', err));
             }
             currentRoomId = null; currentUsername = null;
+            document.title = 'Planning Poker'; // Reset document title
             window.location.hash = '';
             showScreen(createRoomScreen);
         }
