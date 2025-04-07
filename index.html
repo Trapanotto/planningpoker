@@ -1,1410 +1,823 @@
 <!DOCTYPE html>
-<html lang="de">
-<head>
+<html lang="de"> <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Planning Poker</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-    <script type="module">
-        // Import the functions you need from the SDKs you need
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getDatabase, ref, set, onValue, push, onDisconnect, remove, update, serverTimestamp, get, onChildAdded } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <style>
+        /* Custom styles (remain unchanged) */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .card {
+            border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 1rem 1.5rem;
+            background-color: white; cursor: pointer; transition: all 0.2s ease-in-out;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            display: flex; justify-content: center; align-items: center;
+            width: 50px; 
+            height: 80px; font-size: 1.25rem; font-weight: 500;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .card.selected {
+            background-color: #3b82f6; color: white; border-color: #2563eb;
+        }
+        .participant-container {
+            display: flex; flex-direction: column; align-items: center;
+            position: relative; min-width: 80px;
+        }
+        .participant-name {
+            font-size: 0.75rem; font-weight: 500; color: #374151; margin-bottom: 0.25rem;
+            text-align: center; width: 100%; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .participant-vote-card {
+            border: 1px solid #e5e7eb; border-radius: 0.375rem; background-color: #e5e7eb;
+            color: #4b5563; width: 50px; height: 80px; display: flex;
+            justify-content: center; align-items: center; font-size: 1.25rem; font-weight: 600;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        .participant-vote-card.voted {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #2563eb;
+        }
+        .participant-vote-card.revealed {
+            background-color: #3b82f6; color: white; border-color: #2563eb;
+        }
+        /* Remove tooltip styles */
+        /*
+        .tooltip {
+            visibility: hidden; width: 100px; 
+            background-color: #1f2937; color: #fff; text-align: center;
+            border-radius: 6px; padding: 5px 0; position: absolute; z-index: 10;
+            bottom: calc(80px + 0.25rem + 1.2em); left: 50%; transform: translateX(-50%);
+            opacity: 0; transition: opacity 0.3s; pointer-events: none;
+        }
+        .tooltip::after {
+            content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px;
+            border-width: 5px; border-style: solid; border-color: #1f2937 transparent transparent transparent;
+        }
+        .participant-container:hover .tooltip {
+            visibility: visible; opacity: 1; pointer-events: auto;
+        }
+        .kick-button {
+            cursor: pointer; color: #ef4444; font-weight: bold;
+        }
+         .kick-button:hover { color: #dc2626; }
+        */
+        .results-summary {
+            background-color: #e0f2fe; border: 1px solid #bae6fd; border-radius: 0.5rem;
+            padding: 1rem;
+            margin-top: 1.5rem; text-align: center;
+        }
+        .results-summary .average {
+            font-size: 2.5rem; font-weight: 700; color: #0284c7;
+        }
+        .results-summary .vote-distribution div {
+            border: 1px solid #d1d5db; border-radius: 0.375rem; padding: 0.5rem;
+            background-color: white; margin: 0.25rem; min-width: 80px;
+        }
+        .results-summary .vote-distribution .vote-value {
+            font-size: 1.25rem; font-weight: 600;
+        }
+        .results-summary .vote-distribution .vote-count {
+            font-size: 0.875rem; color: #6b7280;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex justify-center items-start">
 
-        // Your web app's Firebase configuration
+    <div id="create-room-screen" class="hidden bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center mt-4">
+        <h1 class="text-2xl font-bold mb-4 text-gray-700">Planning Poker</h1>
+        <p class="text-gray-600 mb-3">Neue Sitzung erstellen</p>
+        <input type="text" id="room-name-input" placeholder="Raumname eingeben" class="w-full px-4 py-2 border rounded-md mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button id="create-room-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
+            Raum erstellen
+        </button>
+
+    </div>
+
+    <div id="enter-name-screen" class="hidden bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center mt-4">
+        <h1 class="text-2xl font-bold mb-4 text-gray-700">Raum beitreten</h1>
+        <p class="text-gray-600 mb-3">Gib deinen Anzeigenamen für diese Sitzung ein:</p>
+        <input type="text" id="display-name-input" placeholder="Dein Name" class="w-full px-4 py-2 border rounded-md mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button id="join-room-button" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
+            Sitzung beitreten
+        </button>
+    </div>
+
+    <div id="poker-room-screen" class="hidden w-full max-w-6xl mx-auto bg-white p-6 md:p-8 rounded-lg shadow-lg overflow-y-auto mt-4">
+        <div class="flex justify-between items-center mb-2">
+            <h1 class="text-2xl md:text-2xl font-bold text-gray-800" id="room-title">Planning Poker</h1>
+            <div class="flex items-center space-x-2">
+                 <span class="text-sm text-gray-500">Einladungslink:</span>
+                 <button id="copy-link-button" title="Einladungslink kopieren" class="p-2 rounded-md hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition duration-150">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                 </button>
+                 <span id="copy-link-feedback" class="text-sm text-green-600 hidden">Kopiert!</span>
+            </div>
+        </div>
+
+        <div class="mb-2">
+            <h2 class="text-lg font-semibold mb-3 text-gray-700">Teilnehmer:</h2>
+            <div id="participants-list" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-x-2 gap-y-6">
+                </div>
+        </div>
+
+        <div id="results-summary-section" class="results-summary hidden mb-4">
+          
+            <div id="average-vote" class="average mb-4"></div>
+            <div id="vote-distribution" class="flex flex-wrap justify-center items-center">
+                </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-2">
+             <button id="reveal-button" class="bg-blue-400 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-md transition duration-200 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed">
+                Aufdecken
+            </button>
+            <button id="reset-button" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-md transition duration-200 w-full sm:w-auto">
+                Zurücksetzen
+            </button>
+        </div>
+
+        <div>
+            <h2 class="text-lg font-semibold mb-3 text-gray-700">Deine Schätzung:</h2>
+            <div id="voting-cards" class="flex flex-wrap justify-center gap-3 md:gap-4">
+                </div>
+        </div>
+
+    </div>
+
+     <div id="kicked-out-screen" class="hidden bg-white p-8 rounded-lg shadow-md w-full max-w-md text-center max-h-[30vh]">
+        <h1 class="text-2xl font-bold mb-6 text-red-600">Du wurdest entfernt</h1>
+        <p class="text-gray-600 mb-4">Du wurdest aus der Sitzung entfernt.</p>
+        <button onclick="window.location.href = window.location.pathname;" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
+            Zur Startseite
+        </button>
+    </div>
+
+    <script type="module">
+        // Firebase Configuration (REPLACE with your actual config)
         const firebaseConfig = {
-            apiKey: "AIzaSyABZ2rEEwDsGUNQ475Iq_RzfqYlMqUEW-M", 
+            apiKey: "AIzaSyABZ2rEEwDsGUNQ475Iq_RzfqYlMqUEW-M",
             authDomain: "planningpoker-115b0.firebaseapp.com",
             databaseURL: "https://planningpoker-115b0-default-rtdb.europe-west1.firebasedatabase.app",
             projectId: "planningpoker-115b0",
-            storageBucket: "planningpoker-115b0.appspot.com", 
+            storageBucket: "planningpoker-115b0.appspot.com", // Corrected storage bucket
             messagingSenderId: "883176222007",
             appId: "1:883176222007:web:b18ea07bdf0733bd557eb2"
         };
 
         // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const database = getDatabase(app);
+        const app = firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
 
         // --- Global Variables ---
         let currentRoomId = null;
-        let currentUserId = null;
-        let currentUserName = null;
-        let participantsListener = null;
-        let messageTimeoutId = null;
-        let isRevealCountdownActive = false;
-        let animationsListener = null; // <<< Ensure this is declared globally
-        let openPanelUserId = null; // Global state
-        const sharedTooltipElement = document.getElementById('sharedTooltip');
+        let currentUserId = sessionStorage.getItem('planningPokerUserId');
+        let currentUsername = null;
+        let roomRef = null;
+        let participantsRef = null;
+        let kickedUsersRef = null;
+        let userRef = null;
+        let countdownInterval = null; // For reveal countdown
+        const VOTE_VALUES = ['0', '0.5', '1', '2', '3', '5', '8', '?', '☕'];
 
         // --- DOM Elements ---
-        const loadingScreen = document.getElementById('loadingScreen'); // <<< Added loading screen
-        const createRoomScreen = document.getElementById('createRoomScreen');
-        const joinRoomScreen = document.getElementById('joinRoomScreen');
-        const pokerRoomScreen = document.getElementById('pokerRoomScreen');
-        const kickedOutScreen = document.getElementById('kickedOutScreen'); // <<< ADD
-        const roomNameInput = document.getElementById('roomNameInput');
-        const createRoomButton = document.getElementById('createRoomButton');
-        const displayNameInput = document.getElementById('displayNameInput');
-        const joinRoomButton = document.getElementById('joinRoomButton');
-        const roomNameDisplay = document.getElementById('roomNameDisplay');
-        // const shareLink = document.getElementById('shareLink'); // No longer needed
-        const participantsList = document.getElementById('participantsList');
-        const votingCards = document.getElementById('votingCards');
-        const revealButton = document.getElementById('revealButton');
-        const resetButton = document.getElementById('resetButton');
-        const resultsSummary = document.getElementById('resultsSummary');
-        const messageBox = document.getElementById('messageBox');
-        const messageText = document.getElementById('messageText');
-        const closeMessageButton = document.getElementById('closeMessageButton');
-        const copyLinkButton = document.getElementById('copyLinkButton'); // Added
-        const countdownDisplay = document.getElementById('countdownDisplay'); // <<< Get countdown element
-        const countdownText = countdownDisplay?.querySelector('span'); // <<< Get span inside
+        const createRoomScreen = document.getElementById('create-room-screen');
+        const enterNameScreen = document.getElementById('enter-name-screen');
+        const pokerRoomScreen = document.getElementById('poker-room-screen');
+        const kickedOutScreen = document.getElementById('kicked-out-screen');
 
-        // --- Constants ---
-        const VOTE_OPTIONS = ['0', '0.5', '1', '2', '3', '5', '8', '?', '☕'];
+        const roomNameInput = document.getElementById('room-name-input');
+        const createRoomButton = document.getElementById('create-room-button');
+        const displayNameInput = document.getElementById('display-name-input');
+        const joinRoomButton = document.getElementById('join-room-button');
+
+        const roomTitle = document.getElementById('room-title');
+        const participantsList = document.getElementById('participants-list');
+        const votingCardsContainer = document.getElementById('voting-cards');
+        const revealButton = document.getElementById('reveal-button');
+        const resetButton = document.getElementById('reset-button');
+        const copyLinkButton = document.getElementById('copy-link-button');
+        const copyLinkFeedback = document.getElementById('copy-link-feedback');
+        const resultsSummarySection = document.getElementById('results-summary-section');
+        const averageVoteDisplay = document.getElementById('average-vote');
+        const voteDistributionDisplay = document.getElementById('vote-distribution');
 
         // --- Functions ---
 
-        // Display messages to the user (modified to allow different colors)
-        function showMessage(message, type = 'error') {
-            // Clear existing timeout if any
-            if (messageTimeoutId) {
-                clearTimeout(messageTimeoutId);
-                messageTimeoutId = null;
-            }
-
-            messageText.textContent = message;
-            messageBox.classList.remove('hidden', 'bg-red-100', 'border-red-300', 'text-red-800', 'bg-green-100', 'border-green-300', 'text-green-800');
-            closeMessageButton.classList.remove('text-red-600', 'hover:text-red-800', 'text-green-600', 'hover:text-green-800');
-
-            if (type === 'success') {
-                messageBox.classList.add('bg-green-100', 'border-green-300', 'text-green-800');
-                closeMessageButton.classList.add('text-green-600', 'hover:text-green-800');
-            } else { // Default to error
-                messageBox.classList.add('bg-red-100', 'border-red-300', 'text-red-800');
-                closeMessageButton.classList.add('text-red-600', 'hover:text-red-800');
-            }
-
-            // Automatically hide after 4 seconds
-            messageTimeoutId = setTimeout(() => {
-                 messageBox.classList.add('hidden');
-                 messageTimeoutId = null; // Clear the tracker
-            }, 4000);
+        // Generate a simple unique ID
+        function generateUserId() {
+            return 'user_' + Math.random().toString(36).substring(2, 15);
         }
 
-        // Hide the message box
-        closeMessageButton.addEventListener('click', () => {
-            messageBox.classList.add('hidden');
-            // Also clear the timeout if closed manually
-             if (messageTimeoutId) {
-                clearTimeout(messageTimeoutId);
-                messageTimeoutId = null;
-            }
-        });
-
-        // Generate a simple unique ID (for room creation)
-        function generateUniqueId() {
-            // Generates a random alphanumeric string
-            return Math.random().toString(36).substring(2, 9);
-        }
-
-        // Get User ID from Session Storage or generate a new one
-        function getUserId() {
-            let userId = sessionStorage.getItem('planningPokerUserId');
-            if (!userId) {
-                // Using push().key generates a unique ID similar to Firebase's auto-IDs
-                // This ensures a unique ID for the session
-                userId = push(ref(database)).key;
-                sessionStorage.setItem('planningPokerUserId', userId);
-            }
-            return userId;
-        }
-
-        // Update UI based on current screen (which view to show)
+        // Show specific screen, hide others
         function showScreen(screenToShow) {
-            // Hide all screens first (including loader)
-            loadingScreen.classList.add('hidden'); // <<< Hide loader
             createRoomScreen.classList.add('hidden');
-            joinRoomScreen.classList.add('hidden');
+            enterNameScreen.classList.add('hidden');
             pokerRoomScreen.classList.add('hidden');
-            kickedOutScreen.classList.add('hidden'); // <<< ADD
-
-            // Manage visibility of copy link button
-            const copyBtn = document.getElementById('copyLinkButton');
-            if (screenToShow === pokerRoomScreen) {
-                copyBtn?.classList.remove('hidden'); // Show copy button only in the poker room
-            } else {
-                copyBtn?.classList.add('hidden'); // Hide copy button on create/join screens
-            }
-
-            // Show the target screen
+            kickedOutScreen.classList.add('hidden');
             screenToShow.classList.remove('hidden');
 
-            // <<< Added: Auto-focus input field >>>
-            setTimeout(() => {
-                if (screenToShow === createRoomScreen) {
-                    roomNameInput.focus();
-                } else if (screenToShow === joinRoomScreen) {
-                    displayNameInput.focus();
-                }
-            }, 50); // Small delay to ensure element is visible before focusing
-        }
-
-        // Handle URL changes (hash changes for room navigation)
-        function handleRouteChange() {
-            const hash = window.location.hash.substring(1); // Get room ID from URL hash (e.g., #roomId)
-
-            loadingScreen.classList.remove('hidden'); // <<< Show loader initially
-            createRoomScreen.classList.add('hidden');   // <<< Hide others explicitly
-            joinRoomScreen.classList.add('hidden');     // <<< Hide others explicitly
-            pokerRoomScreen.classList.add('hidden');    // <<< Hide others explicitly
-
-            if (hash) {
-                // If there's a hash, attempt to join the room
-                currentRoomId = hash;
-                // Check if the room actually exists in Firebase before proceeding
-                const roomRef = ref(database, `rooms/${currentRoomId}`);
-                get(roomRef).then((snapshot) => {
-                    if (snapshot.exists()) {
-                        // Room exists, show the join screen to enter display name
-                        const roomData = snapshot.val();
-                        roomNameDisplay.textContent = roomData.roomName || 'Planning Poker'; // Display the fetched room name
-                        showScreen(joinRoomScreen); // <<< Show join screen (hides loader)
-                    } else {
-                        // Room specified in hash doesn't exist
-                        showMessage(`Raum "${currentRoomId}" nicht gefunden. Du kannst einen neuen Raum erstellen.`); // Translated
-                        window.location.hash = ''; // Clear the invalid hash
-                        sessionStorage.removeItem('planningPokerUserId'); // Clear stored user ID if returning to create screen
-                        sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
-                        showScreen(createRoomScreen); // <<< Show create screen (hides loader)
-                    }
-                }).catch(error => {
-                    // Handle errors during Firebase read
-                    console.error("Error checking room:", error);
-                    showMessage("Fehler beim Prüfen des Raums."); // Translated
-                    window.location.hash = ''; // Clear hash on error
-                    sessionStorage.removeItem('planningPokerUserId'); // Clear stored user ID if returning to create screen
-                    sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
-                    showScreen(createRoomScreen); // <<< Show create screen (hides loader)
-                });
-            } else {
-                // No hash in URL, show the initial screen to create a room
-                currentRoomId = null;
-                currentUserId = null;
-                currentUserName = null;
-                sessionStorage.removeItem('planningPokerUserId'); // Clear stored user ID if returning to create screen
-                sessionStorage.removeItem('planningPokerUserName'); // <<< ADD: Clear stored user name
-                showScreen(createRoomScreen); // <<< Show create screen (hides loader)
+            // Autofocus the relevant input field
+            if (screenToShow === createRoomScreen) {
+                roomNameInput.focus();
+            } else if (screenToShow === enterNameScreen) {
+                displayNameInput.focus();
             }
         }
 
-        // Create a new poker room in Firebase
-        createRoomButton.addEventListener('click', () => {
+        // Handle Room Creation
+        async function handleCreateRoom() {
             const roomName = roomNameInput.value.trim();
             if (!roomName) {
-                showMessage("Bitte gib einen Raumnamen ein."); // Translated
-                return; // Prevent creating room without a name
+                alert('Bitte gib einen Raumnamen ein.'); // GERMAN
+                return;
             }
-            const newRoomId = generateUniqueId(); // Generate a new ID for the room
-            const roomRef = ref(database, `rooms/${newRoomId}`);
-            // Set initial data for the new room in Firebase
-            set(roomRef, {
-                roomName: roomName,
-                votesRevealed: false, // Votes start hidden
-                countdownValue: null, // <<< ADDED: Initialize countdown value
-                createdAt: serverTimestamp() // Optional: record when the room was created
-            }).then(() => {
-                // Successfully created room, navigate to it by setting the hash
-                window.location.hash = newRoomId; // This triggers handleRouteChange -> show join screen
-            }).catch(error => {
-                // Handle errors during Firebase write
-                console.error("Error creating room: ", error);
-                showMessage("Raumerstellung fehlgeschlagen. Bitte versuche es erneut."); // Translated
-            });
-        });
 
-        // Join an existing room (after entering display name)
-        joinRoomButton.addEventListener('click', () => {
+            try {
+                const newRoomRef = database.ref('rooms').push();
+                currentRoomId = newRoomRef.key;
+                await newRoomRef.set({
+                    roomName: roomName,
+                    revealed: false,
+                    revealCountdownEnd: null,
+                    participants: {},
+                    kickedUsers: {}
+                });
+                // Update URL hash and show name entry screen
+                window.location.hash = currentRoomId;
+                showScreen(enterNameScreen);
+            } catch (error) {
+                console.error("Error creating room:", error);
+                alert('Raum konnte nicht erstellt werden. Bitte versuche es erneut.'); // GERMAN
+            }
+        }
+
+        // Handle Joining Room (after name entry)
+        async function handleJoinRoom() {
             const displayName = displayNameInput.value.trim();
             if (!displayName) {
-                showMessage("Bitte gib deinen Anzeigenamen ein.");
+                alert('Bitte gib deinen Anzeigenamen ein.'); // GERMAN
                 return;
-            }
-            if (displayName.length > 30) {
-                 showMessage("Dein Anzeigename darf maximal 30 Zeichen lang sein.");
-                 return; // Verhindert den Firebase-Aufruf
             }
             if (!currentRoomId) {
-                // This should ideally not happen if navigated correctly, but check anyway
-                showMessage("Keine Raum-ID angegeben. Beitritt nicht möglich."); // Translated
+                alert('Ungültige Raum-ID.'); // GERMAN
+                showScreen(createRoomScreen); // Go back to start
+                window.location.hash = '';
                 return;
             }
 
-            currentUserName = displayName;
-            currentUserId = getUserId(); // Get existing or generate new user ID for the session
+            currentUsername = displayName;
 
-            // <<< ADD: Store username in sessionStorage >>>
-            sessionStorage.setItem('planningPokerUserName', currentUserName);
+            // Generate or retrieve user ID
+            if (!currentUserId) {
+                currentUserId = generateUserId();
+                sessionStorage.setItem('planningPokerUserId', currentUserId);
+            }
 
-            // Reference to the specific user within the room's participants list in Firebase
-            const userRef = ref(database, `rooms/${currentRoomId}/participants/${currentUserId}`);
+            try {
+                // Check if user was previously kicked
+                const kickedSnapshot = await database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value');
+                if (kickedSnapshot.exists() && kickedSnapshot.val() === true) {
+                    showScreen(kickedOutScreen);
+                    return; // Stop joining process
+                }
 
-            // Add the user to the room's participants list
-            set(userRef, {
-                name: currentUserName,
-                vote: null, // Initial vote is null
-                hasVoted: false // User hasn't voted yet
-            }).then(() => {
-                // Successfully joined, now set up listener for real-time updates
-                listenToRoomChanges(currentRoomId);
+                roomRef = database.ref(`rooms/${currentRoomId}`);
+                participantsRef = database.ref(`rooms/${currentRoomId}/participants`);
+                kickedUsersRef = database.ref(`rooms/${currentRoomId}/kickedUsers`);
+                userRef = database.ref(`rooms/${currentRoomId}/participants/${currentUserId}`);
 
-                // Set up Firebase's onDisconnect handler
-                // This ensures the user is removed from the participants list if they close the tab/browser
-                onDisconnect(userRef).remove();
+                // Add user to participants
+                await userRef.set({
+                    name: currentUsername,
+                    vote: null,
+                    hasVoted: false
+                });
 
-                // Show the main poker room view
+                // Set up listener to remove user on disconnect
+                await userRef.onDisconnect().remove();
+
+                // Set up listener for room changes
+                listenToRoomChanges();
+
+                // Set up listener for kicked status
+                listenForKickedStatus();
+
                 showScreen(pokerRoomScreen);
-                // shareLink.value = window.location.href; // No longer needed
+                renderVotingCards();
+                // Initialize Lucide icons after showing the screen
+                lucide.createIcons();
 
-                // Render the initial set of voting cards
-                renderVotingCards(null); // No card selected initially
+            } catch (error) {
+                console.error("Error joining room:", error);
+                alert('Beitritt zum Raum fehlgeschlagen. Der Raum existiert möglicherweise nicht oder es gab ein Verbindungsproblem.'); // GERMAN
+                window.location.hash = ''; // Clear invalid hash
+                showScreen(createRoomScreen);
+            }
+        }
 
-            }).catch(error => {
-                // Handle errors during Firebase write
-                console.error("Error joining room: ", error);
-                showMessage("Raumbeitritt fehlgeschlagen. Bitte versuche es erneut."); // Translated
+        // Listen for changes in the room data
+        function listenToRoomChanges() {
+            if (!roomRef) return;
+
+            roomRef.on('value', (snapshot) => {
+                if (!snapshot.exists()) {
+                    // Room deleted or doesn't exist
+                    alert('Dieser Raum existiert nicht mehr.'); // GERMAN
+                    cleanupAndRedirect();
+                    return;
+                }
+
+                const roomData = snapshot.val();
+
+                // Check if current user is still in participants (might have been kicked)
+                if (!roomData.participants || !roomData.participants[currentUserId]) {
+                    const kicked = roomData.kickedUsers && roomData.kickedUsers[currentUserId];
+                     if (!kicked) {
+                        console.log("User not found in participants, redirecting.");
+                        if (!kickedOutScreen.classList.contains('hidden')) return;
+                        cleanupAndRedirect();
+                     }
+                    return; // Kicked status handled by listenForKickedStatus
+                }
+
+                roomTitle.textContent = roomData.roomName || 'Planning Poker';
+                renderParticipants(roomData.participants || {}, roomData.revealed || false);
+                updateVotingCardsSelection(roomData.participants[currentUserId]?.vote);
+                updateActionButtons(roomData.participants || {}, roomData.revealed || false, roomData.revealCountdownEnd);
+                renderResults(roomData.participants || {}, roomData.revealed || false);
+                handleCountdown(roomData.revealCountdownEnd);
+                lucide.createIcons();
+
+            }, (error) => {
+                console.error("Error listening to room changes:", error);
+                alert("Verbindungsfehler. Bitte aktualisiere die Seite."); // GERMAN
+                cleanupAndRedirect();
             });
-        });
+        }
 
-        // Render the list of participants based on Firebase data
-        function renderParticipants(participantsData, votesRevealed, currentUserVote, currentUserIdFromListener) {
-            participantsList.innerHTML = ''; // Clear previous participant list
-            if (!participantsData) return; // Exit if no participant data
+         // Listen specifically for changes to the kicked status of the current user
+        function listenForKickedStatus() {
+            if (!kickedUsersRef || !currentUserId) return;
 
-            const participantIds = Object.keys(participantsData);
-            let numericVotes = [];
-            let voteSum = 0;
-            let voteCount = 0;
+            const userKickedRef = database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`);
+            userKickedRef.on('value', (snapshot) => {
+                if (snapshot.exists() && snapshot.val() === true) {
+                    console.log("Kicked status detected.");
+                    showScreen(kickedOutScreen);
+                    cleanupRoomListeners();
+                    sessionStorage.removeItem('planningPokerRoomId');
+                }
+            }, (error) => {
+                console.error("Error listening for kicked status:", error);
+            });
+        }
 
-            participantIds.forEach(userId => {
-                const participant = participantsData[userId];
-                const isCurrentUser = userId === currentUserIdFromListener;
 
-                const participantWrapper = document.createElement('div');
-                participantWrapper.className = 'relative group flex-shrink-0';
+        // Render the list of participants with name above the card
+        function renderParticipants(participants, revealed) {
+            participantsList.innerHTML = ''; // Clear existing list
+            Object.entries(participants).forEach(([id, participant]) => {
+                const container = document.createElement('div');
+                container.className = 'participant-container group relative';
+                container.dataset.userId = id;
 
-                const participantContainer = document.createElement('div');
-                participantContainer.id = `container-${userId}`; // <<< RE-ADD ID for animation target
-                participantContainer.className = 'relative flex flex-col items-center'; // Keep relative
-                const participantElement = document.createElement('div');
-                participantElement.id = `card-${userId}`;
-                const nameElement = document.createElement('div');
-                const statusElement = document.createElement('div');
+                const nameEl = document.createElement('div');
+                nameEl.className = 'participant-name';
+                nameEl.textContent = participant.name;
+                nameEl.title = participant.name;
 
-                // --- Determine styling based on state (for the card) ---
-                let cardBgBorderClasses = '';
-                let statusColorClass = 'text-gray-800';
-                let statusContent = '';
+                const voteCard = document.createElement('div');
+                voteCard.className = 'participant-vote-card';
 
-                if (votesRevealed) {
-                    cardBgBorderClasses = 'bg-white border-gray-300';
-                    statusContent = participant.vote ?? '-';
-                    statusColorClass = 'text-gray-800';
-                    if (participant.vote !== null && !isNaN(parseFloat(participant.vote))) {
-                        const voteValue = parseFloat(participant.vote);
-                        numericVotes.push(voteValue);
-                        voteSum += voteValue;
-                        voteCount++;
-                    }
+                if (revealed) {
+                    voteCard.textContent = participant.vote ?? '-';
+                    voteCard.classList.add('revealed');
                 } else {
                     if (participant.hasVoted) {
-                        cardBgBorderClasses = 'bg-blue-500 border-blue-700';
-                        statusColorClass = '';
-                        statusContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6 text-white"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>`;
+                        voteCard.innerHTML = '<i data-lucide="check" class="w-6 h-6"></i>'; // Use icon
+                        voteCard.classList.add('voted'); // Add blue background class
+                        // voteCard.textContent = '✓'; // Remove text checkmark
                     } else {
-                        cardBgBorderClasses = 'bg-gray-200 border-gray-400';
-                        statusColorClass = 'text-gray-700';
-                        statusContent = '?';
+                        voteCard.textContent = '?'; // Show question mark
+                        voteCard.classList.remove('voted'); // Ensure not blue if vote removed
                     }
-                }
-                // --- Apply classes and content ---
-                nameElement.textContent = participant.name;
-                nameElement.className = `text-xs font-medium text-center w-16 truncate mb-1 text-gray-800 ${isCurrentUser ? 'font-bold' : ''}`;
-                participantElement.className = `flex items-center justify-center p-1 rounded-lg shadow-sm w-16 h-24 border-2 transition-colors duration-150 ${cardBgBorderClasses}`;
-                statusElement.className = `text-lg font-semibold ${statusColorClass}`;
-                statusElement.innerHTML = statusContent;
-
-                // --- Append elements ---
-                participantContainer.appendChild(nameElement);
-                participantElement.appendChild(statusElement);
-                participantContainer.appendChild(participantElement);
-
-                // <<< Add Reaction Panels (only for other users) >>>
-                if (!isCurrentUser) {
-                    // Create a wrapper for both panels to control hover visibility
-                    const panelsWrapper = document.createElement('div');
-                    panelsWrapper.className = 'panels-wrapper'; // Use this for hover trigger
-                    panelsWrapper.dataset.userId = userId; // Add dataset for lookup early
-                    panelsWrapper.dataset.hideTimer = null; // Init timer state early
-
-                    // <<< DEFINE Timer functions FIRST >>>
-                    const clearPanelTimer = () => {
-                        const timerId = parseInt(panelsWrapper.dataset.hideTimer);
-                        if (!isNaN(timerId)) { clearTimeout(timerId); }
-                        panelsWrapper.dataset.hideTimer = null;
-                    };
-
-                    const startPanelHideTimer = () => {
-                        if (openPanelUserId === userId) return; // DON'T HIDE IF LOCKED!
-                        clearPanelTimer(); // Clear any existing timer first
-                        const timerId = setTimeout(() => {
-                            panelsWrapper.classList.remove('visible');
-                            panelsWrapper.dataset.hideTimer = null; 
-                        }, 500); // 500ms delay
-                        panelsWrapper.dataset.hideTimer = timerId;
-                    };
-
-                    // Emoji Panel
-                    const emojiPanel = document.createElement('div');
-                    emojiPanel.className = 'emoji-panel'; // New class
-                    const emojis = ['🎯', '✈️', '📄', '❤️'];
-                    emojis.forEach(emoji => {
-                        const emojiSpan = document.createElement('span');
-                        emojiSpan.className = 'reaction-emoji';
-                        emojiSpan.textContent = emoji;
-                        // emojiSpan.dataset.tooltipText = `Sende ${emoji}`; // <<< REMOVE Tooltip text
-
-                        emojiSpan.addEventListener('click', (e) => {
-                             e.stopPropagation(); // Prevent closing via global listener
-                             openPanelUserId = userId; // LOCK OPEN
-                             panelsWrapper.classList.add('visible'); // Ensure visible
-                             sendEmojiAnimationEvent(userId, emoji);
-                        });
-                        /* // <<< REMOVE Tooltip Listeners >>>
-                        emojiSpan.addEventListener('mouseenter', () => {
-                            customTooltip.textContent = emojiSpan.dataset.tooltipText;
-                            customTooltip.classList.add('visible');
-                        });
-                         emojiSpan.addEventListener('mouseleave', () => { 
-                             customTooltip.classList.remove('visible');
-                         }); 
-                        */
-                        emojiPanel.appendChild(emojiSpan);
-                    });
-                    panelsWrapper.appendChild(emojiPanel); // Add emoji panel to wrapper
-
-                    // Kick Panel (Separate)
-                    const kickPanel = document.createElement('div');
-                    kickPanel.className = 'kick-panel'; // New class
-                    const kickButton = document.createElement('span');
-                    // kickButton.dataset.tooltipText = `"${participant.name}" entfernen`; // <<< REMOVE Tooltip text
-                    kickButton.dataset.kickUserId = userId;
-                    kickButton.dataset.kickUserName = participant.name;
-                    kickButton.className = 'kick-button-style';
-                    // <<< REPLACE SVG with X Mark >>>
-                    kickButton.innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-                        </svg>
-                    `;
-                    kickButton.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent closing via global listener
-                        openPanelUserId = userId; // LOCK OPEN
-                        panelsWrapper.classList.add('visible'); // Ensure visible
-                        handleKickParticipant(e); 
-                    });
-                    /* // <<< REMOVE Tooltip Listeners >>>
-                    kickButton.addEventListener('mouseenter', () => {
-                        customTooltip.textContent = kickButton.dataset.tooltipText;
-                        customTooltip.classList.add('visible');
-                    });
-                    kickButton.addEventListener('mouseleave', () => {
-                         customTooltip.classList.remove('visible');
-                    });
-                    */
-                    kickPanel.appendChild(kickButton); // Add button to kick panel
-                    panelsWrapper.appendChild(kickPanel); // Add kick panel to wrapper
-
-                    // Add visible class during render if this panel is the locked one
-                    if (userId === openPanelUserId) {
-                        panelsWrapper.classList.add('visible');
-                    }
-
-                    participantContainer.appendChild(panelsWrapper); // Append the main wrapper
-
-                    // <<< REMOVE Timer definitions from here >>>
-                    /* 
-                    panelsWrapper.dataset.hideTimer = null; 
-                    const clearPanelTimer = () => { ... };
-                    const startPanelHideTimer = () => { ... };
-                    */
-
-                    // <<< ADD Hover listeners >>>
-                     participantWrapper.addEventListener('mouseenter', () => {
-                        clearPanelTimer();
-                        panelsWrapper.classList.add('visible');
-                    });
-                    participantWrapper.addEventListener('mouseleave', startPanelHideTimer);
-
-                    panelsWrapper.addEventListener('mouseenter', clearPanelTimer);
-                    panelsWrapper.addEventListener('mouseleave', startPanelHideTimer);
-                    
-                    // Keep stop propagation for clicks directly on the panel background
-                    panelsWrapper.addEventListener('click', (e) => {
-                         e.stopPropagation();
-                    });
+                    // Ensure revealed styles are not applied before reveal
+                    voteCard.classList.remove('revealed');
                 }
 
-                 participantWrapper.appendChild(participantContainer);
-                 participantsList.appendChild(participantWrapper);
+                container.appendChild(nameEl);
+                container.appendChild(voteCard);
+
+                if (id !== currentUserId) {
+                    const removeButton = document.createElement('button');
+                    removeButton.className = `
+                        absolute -top-1.5 -right-1.5 /* Adjusted position */ 
+                        bg-white rounded-full p-0.5 /* Smaller padding */ 
+                        shadow border border-gray-200 
+                        text-red-500 hover:text-red-700 hover:bg-red-50
+                        opacity-0 group-hover:opacity-100 
+                        transition-opacity duration-200 ease-in-out
+                        focus:outline-none focus:ring-1 focus:ring-red-300 /* Smaller ring */
+                    `; // Tailwind classes for styling and positioning
+                    removeButton.title = 'Benutzer entfernen'; // GERMAN
+                    removeButton.innerHTML = '<i data-lucide="trash-2" class="w-3.5 h-3.5"></i>'; /* Smaller icon */
+                    removeButton.onclick = (e) => {
+                        e.stopPropagation(); // Prevent clicks on elements underneath
+                        handleKickUser(id);
+                    };
+                    container.appendChild(removeButton);
+                }
+
+                participantsList.appendChild(container);
             });
+             // Ensure icons render after updates
+             lucide.createIcons();
+        }
 
-            // Update and show the results summary section if votes are revealed
-            if (votesRevealed) {
-                resultsSummary.classList.remove('hidden'); // Make summary visible
-                let summaryHtml = '<h3 class="text-lg font-semibold mb-2 text-center">Durchschnitt</h3>'; // Title
+        // Render the voting cards
+        function renderVotingCards() {
+            votingCardsContainer.innerHTML = '';
+            VOTE_VALUES.forEach(value => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.dataset.value = value;
+                card.textContent = value === '☕' ? '☕' : value;
+                card.onclick = () => handleVote(value);
+                votingCardsContainer.appendChild(card);
+            });
+        }
 
-                let minVote = null;
-                let maxVote = null;
-                let hasNonNumericVote = false; // <<< Flag for non-numeric votes
-
-                // Calculate stats and check for non-numeric votes *before* building summaryHTML
-                if (voteCount > 0) {
-                     minVote = Math.min(...numericVotes);
-                     maxVote = Math.max(...numericVotes);
-                 }
-                // Check all participants who voted for non-numeric votes
-                participantIds.forEach(userId => {
-                    const participant = participantsData[userId];
-                    if (participant.hasVoted && participant.vote !== null) {
-                        if (isNaN(parseFloat(participant.vote))) {
-                            hasNonNumericVote = true;
-                        }
-                    }
-                });
-
-                if (voteCount > 0) {
-                    const average = (voteSum / voteCount).toFixed(1);
-                    summaryHtml += `<div class="text-center mb-2"><span class="font-bold text-3xl text-blue-600">${average}</span></div>`; // Changed text-xl to text-3xl
-                    summaryHtml += `<div class="text-xs text-gray-600 text-center">(Min: ${minVote}, Max: ${maxVote})</div>`; // Kept Min/Max
-
-                    // Check for consensus: requires numeric votes, all same, no non-numeric votes cast,
-                    // AND everyone must have cast a numeric vote.
-                    if (voteCount > 0 && new Set(numericVotes).size === 1 && !hasNonNumericVote && voteCount === participantIds.length) {
-                         summaryHtml += `<div class="mt-2 text-center text-green-600 font-semibold">Konsens erreicht!</div>`; // Translated
-                    }
-
+        // Handle user voting
+        async function handleVote(value) {
+            if (!userRef) return;
+            try {
+                const currentVoteSnapshot = await userRef.child('vote').once('value');
+                const currentVote = currentVoteSnapshot.val();
+                if (currentVote === value) {
+                    await userRef.update({ vote: null, hasVoted: false });
                 } else {
-                    // Message if no numeric votes were cast
-                    summaryHtml += `<div class="text-center text-gray-500">Keine Stimmen abgegeben.</div>`; // Translated
+                    await userRef.update({ vote: value, hasVoted: true });
                 }
-                 resultsSummary.innerHTML = summaryHtml; // Update the DOM
-
-                // --- Highlight Min/Max Cards ---
-                // Iterate through the already rendered participant wrappers/cards
-                 const participantWrappers = participantsList.querySelectorAll(':scope > div'); // Get the outer wrappers
-                 participantWrappers.forEach((wrapper, index) => {
-                    const cardElement = wrapper.querySelector(':scope > div > div:nth-child(2)'); // Find the card element inside
-                    if (!cardElement) return; // Skip if structure isn't as expected
-
-                    const userId = participantIds[index]; // Get corresponding userId
-                    const participant = participantsData[userId];
-                    if (participant && participant.vote !== null && !isNaN(parseFloat(participant.vote))) {
-                        const voteValue = parseFloat(participant.vote);
-                        // Remove potential old highlights first
-                        cardElement.classList.remove('border-yellow-500', 'ring-2', 'ring-yellow-200');
-
-                        if (voteCount > 1 && new Set(numericVotes).size > 1) { // Only highlight if more than one vote and they differ
-                             // Highlight both min and max with yellow
-                             if (voteValue === minVote || voteValue === maxVote) {
-                                cardElement.classList.add('border-yellow-500', 'ring-2', 'ring-yellow-200');
-                             }
-                        }
-                    }
-                });
-                 // ------------------------------
-
-            } else {
-                // Hide results summary if votes are not revealed
-                resultsSummary.classList.add('hidden');
-                resultsSummary.innerHTML = ''; // Clear previous summary content
+            } catch (error) {
+                console.error("Error casting vote:", error);
+                alert('Stimme konnte nicht abgegeben werden.'); // GERMAN
             }
-
-            // Re-render voting cards to correctly show the current user's selection based on latest data
-             renderVotingCards(currentUserVote);
         }
 
-        // Render the clickable voting cards
-        function renderVotingCards(selectedVote) {
-            votingCards.innerHTML = ''; // Clear previous cards
-            // Loop through the predefined vote options
-            VOTE_OPTIONS.forEach(option => {
-                const cardButton = document.createElement('button');
-                cardButton.textContent = option; // Display vote value on card
-                cardButton.dataset.vote = option; // Store vote value in data attribute for easy access
-                // Style the card button: SMALLER SIZE, Fixed size, flex centered, layout, and interaction styles
-                cardButton.className = `
-                    p-1 m-1 border-2 rounded-lg shadow hover:shadow-md transition-all duration-150
-                    flex items-center justify-center text-lg font-semibold w-16 h-24 /* <-- Smaller Fixed size */
-                    bg-white border-gray-300 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400
-                `; // Smaller w-16 h-24, p-1, text-lg
-
-                // Apply selected style if this card matches the user's current vote
-                if (option === selectedVote) {
-                    cardButton.classList.remove('bg-white', 'border-gray-300');
-                    cardButton.classList.add('bg-blue-500', 'text-white', 'border-blue-700', 'ring-2', 'ring-offset-1', 'ring-blue-400');
+        // Update visual selection of voting cards
+        function updateVotingCardsSelection(selectedVote) {
+            const cards = votingCardsContainer.querySelectorAll('.card');
+            cards.forEach(card => {
+                if (card.dataset.value === selectedVote) {
+                    card.classList.add('selected');
+                } else {
+                    card.classList.remove('selected');
                 }
-
-                // Add click listener to handle vote selection
-                cardButton.addEventListener('click', handleVoteSelection);
-                votingCards.appendChild(cardButton); // Add card to the DOM
             });
         }
 
-        // Handle clicking a voting card
-        function handleVoteSelection(event) {
-            // Ensure user and room context is available
-            if (!currentUserId || !currentRoomId) return;
-
-            const selectedVote = event.target.dataset.vote; // Get vote value from clicked card
-            const userRef = ref(database, `rooms/${currentRoomId}/participants/${currentUserId}`);
-
-            // <<< ADD: Get username reliably (e.g., from sessionStorage) >>>
-            const userNameFromStorage = sessionStorage.getItem('planningPokerUserName') || 'Unknown'; // Fallback added
-
-            // Check current vote to see if user is deselecting
-            get(userRef).then(snapshot => {
-                const currentData = snapshot.val();
-                let newVote = selectedVote;
-                let newHasVoted = true;
-
-                // If user clicks the card that is already selected, deselect it
-                if (currentData && currentData.vote === selectedVote) {
-                    newVote = null; // Reset vote
-                    newHasVoted = false; // Mark as not voted
-                }
-
-                // Update user's vote and status in Firebase
-                // <<< ADD name to the update object >>>
-                update(userRef, {
-                    name: userNameFromStorage, // Ensure name is present/re-added
-                    vote: newVote,
-                    hasVoted: newHasVoted
-                }).catch(error => {
-                    console.error("Error updating vote:", error);
-                    showMessage("Stimmabgabe fehlgeschlagen."); // Translated
-                });
-
-                // Immediately update the card UI for better responsiveness (Firebase update will follow)
-                renderVotingCards(newVote);
-            });
-        }
-
-        // Handle Reveal Votes button click with Firebase-synced countdown
-        revealButton.addEventListener('click', () => {
-            if (!currentRoomId || revealButton.disabled) return; // Prevent action if no room or already processing
-
-            const roomRef = ref(database, `rooms/${currentRoomId}`);
-            const startCountdownValue = 3;
-
-            // Immediately disable button locally for responsiveness
+        // Handle Reveal Votes button click
+        async function handleRevealVotes() {
+            if (!roomRef) return;
             revealButton.disabled = true;
-
-            // 1. Set initial countdown value in Firebase
-            update(roomRef, { countdownValue: startCountdownValue })
-                .then(() => {
-                    // 2. Start interval ONLY on the client that clicked
-                    let localCountdown = startCountdownValue;
-                    const intervalId = setInterval(() => {
-                        localCountdown--;
-
-                        if (localCountdown > 0) {
-                            // 3. Decrement value in Firebase
-                            update(roomRef, { countdownValue: localCountdown })
-                                .catch(error => {
-                                     console.error("Error updating countdown:", error);
-                                     clearInterval(intervalId); // Stop on error
-                                     // Attempt to reset countdown state on error
-                                     update(roomRef, { countdownValue: null }).catch(()=>{});
-                                     // Button state will be corrected by the listener
-                                });
-                        } else {
-                            // 4. Countdown finished: Reveal votes and clear countdown
-                            clearInterval(intervalId);
-                            update(roomRef, {
-                                votesRevealed: true,
-                                countdownValue: null
-                            }).catch(error => {
-                                 console.error("Error revealing votes after countdown:", error);
-                                 showMessage("Fehler beim Aufdecken der Stimmen.");
-                                 // Attempt to clear countdown state even on error
-                                 update(roomRef, { countdownValue: null }).catch(()=>{});
-                            });
-                            // Listener will handle UI changes (hiding countdown, showing results etc.)
-                        }
-                    }, 1000); // Update every 1 second
-                })
-                .catch(error => {
-                    console.error("Error starting countdown:", error);
-                    showMessage("Fehler beim Starten des Countdowns.");
-                     // Re-enable button if initial Firebase update fails
-                    revealButton.disabled = false;
-                });
-        });
-
-        // Handle Reset Votes / Start New Vote button click
-        resetButton.addEventListener('click', () => {
-            if (!currentRoomId) return;
-            const roomRef = ref(database, `rooms/${currentRoomId}`);
-            const updates = {}; // Object to hold all updates for atomic operation
-            updates['votesRevealed'] = false; // Hide votes again
-            updates['countdownValue'] = null; // <<< ADDED: Reset countdown value
-
-             // Need to reset vote and hasVoted status for all participants
-            const participantsRef = ref(database, `rooms/${currentRoomId}/participants`);
-            get(participantsRef).then(snapshot => {
-                if (snapshot.exists()) {
-                    const participants = snapshot.val();
-                    // Add updates for each participant to the updates object
-                    Object.keys(participants).forEach(userId => {
-                        updates[`participants/${userId}/vote`] = null;
-                        updates[`participants/${userId}/hasVoted`] = false;
-                    });
-                }
-                 // Apply all updates (reveal status, countdown reset, and participant resets) at once
-                update(roomRef, updates)
-                    .catch(error => console.error("Error resetting votes:", error));
-                // The onValue listener will automatically update the UI
-            }).catch(error => console.error("Error fetching participants for reset:", error));
-        });
-
-        // Listen for real-time changes in the room data in Firebase
-        function listenToRoomChanges(roomId) {
-            // Detach previous room listener
-            if (participantsListener) {
-                participantsListener();
-                participantsListener = null;
+            try {
+                const countdownEndTime = Date.now() + 3000;
+                await roomRef.update({ revealCountdownEnd: countdownEndTime });
+            } catch (error) {
+                console.error("Error initiating reveal:", error);
+                alert('Starten des Aufdeckens fehlgeschlagen.'); // GERMAN
+                revealButton.disabled = false;
             }
-            // Detach previous animation listener <<< Check if it exists first >>>
-             if (animationsListener) {
-                 animationsListener(); // Assuming it returns unsubscribe function
-                 animationsListener = null;
+        }
+
+        // Handle countdown logic
+        function handleCountdown(countdownEndTime) {
+            clearInterval(countdownInterval);
+            if (countdownEndTime && countdownEndTime > Date.now()) {
+                revealButton.disabled = true;
+                const updateTimer = () => {
+                    const remaining = Math.max(0, countdownEndTime - Date.now());
+                    const seconds = Math.ceil(remaining / 1000);
+                    revealButton.textContent = `Wird aufgedeckt in ${seconds}...`; // GERMAN
+                    if (remaining === 0) {
+                        clearInterval(countdownInterval);
+                         if(roomRef) {
+                             roomRef.update({ revealed: true, revealCountdownEnd: null })
+                                .catch(err => console.error("Error setting revealed=true:", err));
+                         }
+                    }
+                };
+                countdownInterval = setInterval(updateTimer, 500);
+                updateTimer();
+            } else {
+                if (countdownEndTime && countdownEndTime <= Date.now()) {
+                     if(roomRef) {
+                         roomRef.child('revealed').once('value', snap => {
+                            if (!snap.val()) {
+                                roomRef.update({ revealed: true, revealCountdownEnd: null })
+                                    .catch(err => console.error("Error setting revealed=true post-countdown:", err));
+                            } else if (snap.val() && roomRef.child('revealCountdownEnd').exists()) {
+                                roomRef.child('revealCountdownEnd').remove();
+                            }
+                         });
+                     }
+                }
+                 roomRef.child('revealed').once('value', snapshot => {
+                    const isRevealed = snapshot.val();
+                    if (!isRevealed) {
+                        revealButton.textContent = 'Aufdecken'; // GERMAN
+                        revealButton.disabled = false;
+                    } else {
+                        revealButton.textContent = 'Stimmen aufgedeckt'; // GERMAN
+                        revealButton.disabled = true;
+                    }
+                 });
+            }
+        }
+
+
+        // Handle Reset button click
+        async function handleReset() {
+            if (!participantsRef || !roomRef) return;
+            clearInterval(countdownInterval);
+            try {
+                const updates = {};
+                updates['/revealed'] = false;
+                updates['/revealCountdownEnd'] = null;
+                const snapshot = await participantsRef.once('value');
+                const participants = snapshot.val() || {};
+                Object.keys(participants).forEach(id => {
+                    updates[`/participants/${id}/vote`] = null;
+                    updates[`/participants/${id}/hasVoted`] = false;
+                });
+                await roomRef.update(updates);
+                resultsSummarySection.classList.add('hidden');
+            } catch (error) {
+                console.error("Error resetting votes:", error);
+                alert('Zurücksetzen der Stimmen fehlgeschlagen.'); // GERMAN
+            }
+        }
+
+         // Handle Kick User button click
+        async function handleKickUser(userIdToKick) {
+            if (!kickedUsersRef || !userIdToKick || userIdToKick === currentUserId) return;
+            const confirmation = confirm(`Bist du sicher, dass du diesen Benutzer entfernen möchtest?`); // GERMAN
+            if (confirmation) {
+                try {
+                    await database.ref(`rooms/${currentRoomId}/kickedUsers/${userIdToKick}`).set(true);
+                    await database.ref(`rooms/${currentRoomId}/participants/${userIdToKick}`).remove();
+                    console.log(`User ${userIdToKick} kicked.`);
+                } catch (error) {
+                    console.error("Error kicking user:", error);
+                    alert('Benutzer konnte nicht rausgeworfen werden.'); // GERMAN
+                }
+            }
+        }
+
+
+        // Update state of Reveal and Reset buttons
+        function updateActionButtons(participants, revealed, countdownEndTime) {
+             const hasParticipants = Object.keys(participants).length > 0;
+
+             if (revealed) {
+                 // Votes are revealed: Hide Reveal, Show Reset
+                 revealButton.classList.add('hidden');
+                 resetButton.classList.remove('hidden');
+                 resetButton.disabled = false; // Enable reset button
+             } else {
+                 // Votes are not revealed: Show Reveal, Hide Reset
+                 revealButton.classList.remove('hidden');
+                 resetButton.classList.add('hidden');
+
+                 // Handle reveal button state (disabled during countdown or if no participants)
+                 if (countdownEndTime && countdownEndTime > Date.now()) {
+                     revealButton.disabled = true;
+                 } else {
+                     revealButton.textContent = 'Stimmen aufdecken'; // GERMAN
+                     revealButton.disabled = !hasParticipants;
+                 }
              }
 
-            const roomRef = ref(database, `rooms/${roomId}`);
-
-            participantsListener = onValue(roomRef, (snapshot) => {
-                const currentUserIdFromStorage = getUserId();
-
-                if (!snapshot.exists()) {
-                     showMessage("Der Raum existiert nicht mehr.");
-                     cleanupAndRedirect();
-                     return;
-                }
-
-                 const roomData = snapshot.val();
-                 const participants = roomData.participants || {};
-                 const votesRevealed = roomData.votesRevealed || false;
-                 const countdownValue = roomData.countdownValue; // <<< Get countdown value
-
-                 const currentUserData = participants[currentUserIdFromStorage];
-
-                 if (!currentUserData && currentUserIdFromStorage) {
-                      cleanupBeforeKick();
-                      showScreen(kickedOutScreen);
-                      return;
-                 }
-
-                 const currentUserVote = currentUserData ? currentUserData.vote : null;
-
-                 // --- UI Logic based on state ---
-
-                 // <<< ADD element lookup INSIDE the callback >>>
-                 const countdownDisplay = document.getElementById('countdownDisplay');
-                 const countdownText = countdownDisplay?.querySelector('span');
-
-
-                 // 1. Handle Countdown Active State
-                 if (typeof countdownValue === 'number' && countdownValue > 0) {
-                     revealButton.classList.add('hidden');
-                     resetButton.classList.add('hidden');
-                     resultsSummary.classList.add('hidden'); // Hide results during countdown
-                     if (countdownDisplay && countdownText) {
-                         countdownText.textContent = countdownValue;
-                         countdownDisplay.classList.remove('hidden');
-                     }
-                     revealButton.disabled = true; // Ensure reveal stays disabled
-                     resetButton.disabled = true; // Ensure reset stays disabled
-                     // Re-render participants normally (showing who voted, not the value)
-                     renderParticipants(participants, false, currentUserVote, currentUserIdFromStorage);
-                     // Optionally disable voting cards during countdown?
-                     // renderVotingCards(currentUserVote, true); // Pass a flag to disable
-
-                 // 2. Handle Votes Revealed State
-                 } else if (votesRevealed) {
-                     revealButton.classList.add('hidden');
-                     resetButton.classList.remove('hidden');
-                     if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Hide countdown display
-                     
-                     revealButton.disabled = true;
-                     resetButton.disabled = false;
-                     // Render participants WITH votes revealed
-                     renderParticipants(participants, true, currentUserVote, currentUserIdFromStorage);
-                     // Re-enable voting cards (or keep disabled based on UX choice)
-                     // renderVotingCards(currentUserVote, false);
-
-                 // 3. Handle Voting State (No countdown, Votes not revealed)
-                 } else {
-                     revealButton.classList.remove('hidden');
-                     resetButton.classList.add('hidden');
-                     resultsSummary.classList.add('hidden'); // Ensure results are hidden
-                     if (countdownDisplay) countdownDisplay.classList.add('hidden'); // Hide countdown display
-
-                     revealButton.disabled = false; // Enable reveal button
-                     resetButton.disabled = true; // Disable reset button
-
-                     // Render participants normally (showing who voted, not the value)
-                      renderParticipants(participants, false, currentUserVote, currentUserIdFromStorage);
-                      // Ensure voting cards are enabled
-                      // renderVotingCards(currentUserVote, false);
-                 }
-
-
-                 // <<< NOTE: The existing logic inside renderParticipants for showing results only if
-                 //     votesRevealed is true still works correctly. We are just controlling the
-                 //     overall UI state (buttons, countdown visibility) here based on the new flow. >>>
-
-             }, (error) => {
-                 // Handle errors during listening (e.g., permission denied, network issues)
-                 console.error("Error listening to room changes:", error);
-                 showMessage("Verbindungsfehler. Bitte aktualisiere die Seite."); // Translated
-                  if (participantsListener) {
-                      participantsListener(); // Detach listener on error
-                      participantsListener = null;
-                  }
-                  // Maybe redirect on error too? Optional.
-                  // cleanupAndRedirect();
-             });
-
-             // --- Temporarily commenting out the animation listener attachment ---
-               const animationsRef = ref(database, `rooms/${roomId}/animations`);
-               animationsListener = onChildAdded(animationsRef, (snapshot) => {
-                   const currentUserIdFromStorage = getUserId(); // Get current user ID inside listener
-   
-                   if (snapshot.exists()) {
-                       const animationData = snapshot.val();
-                       console.log("Received animation event:", animationData); // <<< ADDED: Logging
-   
-                       // --- Check Sender ---
-                       // Only play if the event was sent by someone else
-                       if (animationData.senderUserId && animationData.senderUserId !== currentUserIdFromStorage) {
-                          console.log("Playing animation sent by other user"); // <<< ADDED: Logging
-                          // playEmojiAnimationLocally(animationData.targetUserId, animationData.emojiChar);
-                          const targetContainer = document.getElementById(`container-${animationData.targetUserId}`); // <<< Find target element
-                          console.log('[listenToRoomChanges] Found target for remote play:', targetContainer); // <<< ADD LOG
-                          if (targetContainer) {
-                             triggerEmojiAnimation(targetContainer, animationData.emojiChar); // <<< Play locally
-                          } else {
-                             console.warn("Target container not found for animation", animationData.targetUserId);
-                          }
-                       } else {
-                           console.log("Ignoring own animation event or missing senderId"); // <<< ADDED: Logging
-                       }
-                       // --- End Check Sender ---
-    
-                       // Temporarily removed timestamp check for debugging
-                         // <<< This opens the inner block comment
-                       // const now = Date.now();
-                       // const eventTime = animationData.timestamp;
-                       // if (eventTime && (now - eventTime > 5000)) {
-                       //      if (now - eventTime > 60000) { remove(snapshot.ref).catch(()=>{}); }
-                       //      return;
-                       //  }
-                        // <<< This closes the OUTER block comment prematurely
-    
-                   }
-               }, (error) => {
-                   console.error("Error listening for animations:", error);
-               });
-              
+             // Disable buttons during countdown regardless of revealed state
+             if (countdownEndTime && countdownEndTime > Date.now()) {
+                resetButton.disabled = true; // Also disable reset during countdown
+             }
         }
 
-        // Modify cleanupAndRedirect to also check before detaching animation listener
-        function cleanupAndRedirect() {
-            cleanupBeforeKick(); // <<< Call the common cleanup logic
-
-             // ... (rest of cleanup) ...
-              currentRoomId = null;
-              currentUserId = null;
-              currentUserName = null;
-              sessionStorage.removeItem('planningPokerUserId');
-              sessionStorage.removeItem('planningPokerUserName');
-              window.location.hash = '';
-              showScreen(createRoomScreen);
-        }
-
-        // <<< NEW Function: Cleanup listeners and state without redirecting >>>
-        function cleanupBeforeKick() {
-            if (participantsListener) {
-                participantsListener();
-                participantsListener = null;
+        // Render the results summary (average, distribution)
+        function renderResults(participants, revealed) {
+            if (!revealed) {
+                resultsSummarySection.classList.add('hidden');
+                return;
             }
-             // Detach animation listener <<< Check if it exists first >>>
-              if (animationsListener) {
-                  animationsListener();
-                  animationsListener = null;
-              }
-        }
 
-        // ***** NEW FUNCTION *****
-        // Handle Copy Link button click
-        function handleCopyLink() {
-            const linkToCopy = window.location.href;
-            navigator.clipboard.writeText(linkToCopy).then(() => {
-                // Success feedback
-                showMessage("Link in die Zwischenablage kopiert!", 'success'); // Translated
-                // Optional: visual feedback on button
-                const btn = document.getElementById('copyLinkButton');
-                if(btn) {
-                    const originalBg = btn.classList.contains('hover:bg-gray-200') ? 'hover:bg-gray-200' : null; // Store original hover state if needed
-                    btn.classList.remove('hover:bg-gray-200');
-                    btn.classList.add('bg-green-100'); // Temporary green background
-                    setTimeout(() => {
-                        btn.classList.remove('bg-green-100');
-                        if(originalBg) btn.classList.add(originalBg); // Restore hover state
-                    }, 1500); // Show feedback for 1.5 seconds
-                }
-            }).catch(err => {
-                // Error feedback
-                console.error('Failed to copy link: ', err);
-                showMessage('Link konnte nicht kopiert werden. Bitte manuell kopieren.'); // Translated
+            // Always show the results section if revealed is true
+            resultsSummarySection.classList.remove('hidden');
+
+            // Get all votes, filtering out both null and undefined rigorously
+            const votes = Object.values(participants).map(p => p.vote).filter(v => v != null);
+
+            if (votes.length === 0) {
+                // No votes cast, show placeholder
+                 // GERMAN: Durchschnitt & Kein Ergebnis
+                 // Use same text size (text-4xl) as the actual average for consistency
+                averageVoteDisplay.innerHTML = `<span class="text-base font-semibold text-gray-700 block mb-1">Durchschnitt</span><span class="text-3xl font-bold text-gray-500 block mb-1">-</span>`;
+                voteDistributionDisplay.innerHTML = '<p class="text-gray-500 italic">Keine Stimmen abgegeben.</p>'; // GERMAN
+                voteDistributionDisplay.className = 'flex justify-center items-center mt-4'; // Reset classes
+                return; // Stop further processing
+            }
+
+            // Calculate Average
+            const numericVotes = votes.map(v => parseFloat(v)).filter(v => !isNaN(v));
+            let average = '-';
+            if (numericVotes.length > 0) {
+                const sum = numericVotes.reduce((a, b) => a + b, 0);
+                average = (sum / numericVotes.length).toFixed(1);
+            }
+
+            // Calculate Min/Max and Check Consensus
+            let minVote = '-';
+            let maxVote = '-';
+            let consensusReached = false;
+            if (numericVotes.length > 0) {
+                minVote = Math.min(...numericVotes);
+                maxVote = Math.max(...numericVotes);
+                // Consensus is reached if all numeric votes are the same (min === max)
+                consensusReached = minVote === maxVote;
+            }
+
+            // Build HTML for the average/min/max/consensus section
+            let averageHTML = `
+                <span class="text-base font-semibold text-gray-700 block mb-1">Durchschnitt</span>
+                <span class="text-4xl font-bold text-blue-600 block mb-1">${average}</span>
+                <span class="text-xs text-gray-600 block">(Min: ${minVote}, Max: ${maxVote})</span>
+            `;
+
+            if (consensusReached) {
+                averageHTML += `<span class="text-green-600 font-medium mt-2 block text-sm">Konsens erreicht!</span>`; // Smaller text, less bold
+            }
+
+            averageVoteDisplay.innerHTML = averageHTML;
+
+            // Calculate Distribution
+            const distribution = votes.reduce((acc, vote) => {
+                acc[vote] = (acc[vote] || 0) + 1;
+                return acc;
+            }, {});
+
+            voteDistributionDisplay.innerHTML = ''; // Clear previous distribution
+             // Ensure the container is a flex container for alignment
+            voteDistributionDisplay.className = 'flex flex-wrap justify-center items-center gap-4 mt-4';
+
+            Object.entries(distribution)
+                .sort(([valA], [valB]) => {
+                    // Consistent sorting (numbers first, then '?', then '☕')
+                    const numA = parseFloat(valA); const numB = parseFloat(valB);
+                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                    if (!isNaN(numA)) return -1;
+                    if (!isNaN(numB)) return 1;
+                    if (valA === '?') return -1;
+                    if (valB === '?') return 1;
+                    if (valA === '☕') return 1; // Place coffee last
+                    if (valB === '☕') return -1;
+                    return valA.localeCompare(valB); // Fallback for other non-numeric
+                })
+                .forEach(([vote, count]) => {
+                // Create the styled box using Tailwind
+                const div = document.createElement('div');
+                div.className = 'flex flex-col items-center justify-center p-4 border border-gray-300 rounded-md bg-white shadow-sm min-w-[80px] h-[90px]'; // Adjusted size and padding
+
+                // Vote value (large)
+                const voteValueEl = document.createElement('span');
+                voteValueEl.className = 'text-2xl font-semibold text-gray-800'; // Adjusted size
+                voteValueEl.textContent = vote === '☕' ? '☕' : vote;
+
+                // Vote count (smaller, below)
+                const voteCountEl = document.createElement('span');
+                voteCountEl.className = 'text-xs text-gray-500 mt-1'; // Adjusted size and margin
+                // GERMAN translation for vote(s)
+                voteCountEl.textContent = `${count} ${count > 1 ? 'Stimmen' : 'Stimme'}`;
+
+                div.appendChild(voteValueEl);
+                div.appendChild(voteCountEl);
+                voteDistributionDisplay.appendChild(div);
             });
         }
 
-        // ***** NEW FUNCTION *****
-        // Handle kicking a participant
-        function handleKickParticipant(event) {
-            const button = event.currentTarget;
-            const userIdToKick = button.dataset.kickUserId;
-            const userNameToKick = button.dataset.kickUserName || 'diesen Teilnehmer'; // Fallback name
 
-            if (!userIdToKick || !currentRoomId) {
-                showMessage('Fehler: Benutzer-ID oder Raum-ID fehlt.');
-                return;
-            }
-
-            // Optional: Confirmation dialog
-            if (!confirm(`Möchtest du "${userNameToKick}" wirklich aus dem Raum entfernen?`)) {
-                return; // User cancelled
-            }
-
-            const participantRefToRemove = ref(database, `rooms/${currentRoomId}/participants/${userIdToKick}`);
-
-            remove(participantRefToRemove)
-                .then(() => {
-                    // Optional: Success feedback (though the UI will update automatically)
-                    // showMessage(`"${userNameToKick}" wurde entfernt.`, 'success');
-                    console.log(`Participant ${userIdToKick} removed.`);
-                })
-                .catch(error => {
-                    console.error("Error removing participant:", error);
-                    showMessage(`Entfernen von "${userNameToKick}" fehlgeschlagen.`);
-                });
+        // Copy invite link to clipboard
+        function copyInviteLink() {
+            const link = `${window.location.origin}${window.location.pathname}#${currentRoomId}`;
+            navigator.clipboard.writeText(link).then(() => {
+                copyLinkFeedback.classList.remove('hidden');
+                setTimeout(() => {
+                    copyLinkFeedback.classList.add('hidden');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy link: ', err);
+                alert('Link konnte nicht kopiert werden.'); // GERMAN
+            });
         }
 
-        // ***** NEW FUNCTION *****
-        // Trigger the emoji fly/bounce animation (Curved Center Target)
-        function triggerEmojiAnimation(targetElement, emojiChar) {
-            const flyingEmoji = document.createElement('span');
-            flyingEmoji.textContent = emojiChar;
-            flyingEmoji.className = 'emoji-animate'; 
-
-            const targetRect = targetElement.getBoundingClientRect();
-            if (!targetRect || targetRect.width === 0) {
-                console.warn('[triggerEmojiAnimation] Invalid targetRect, aborting.');
-                return;
-            }
-
-            // Determine start side randomly
-            const startsLeft = Math.random() < 0.5;
-            const startX = startsLeft ? -50 : window.innerWidth + 50;
-
-            // Target the CENTER of the card
-            const targetX = targetRect.left + targetRect.width / 2 - (flyingEmoji.offsetWidth / 2 || 16); // Adjust for emoji size approximation
-            const targetY = targetRect.top + targetRect.height / 2 - (flyingEmoji.offsetHeight / 2 || 16);
-            
-            // Align Start Y with Target Y for simpler curve calculation relative to horizontal axis
-            const startY = targetY; 
-
-            // Calculate deltas relative to start
-            const deltaX = targetX - startX;
-            const deltaY = targetY - startY; // Will be 0
-
-            // Calculate curve height (adjust multiplier for more/less arc)
-            const curveHeight = Math.min(80, Math.abs(deltaX * 0.15)); 
-
-            flyingEmoji.style.left = `${startX}px`;
-            flyingEmoji.style.top = `${startY}px`; 
-            flyingEmoji.style.opacity = '0'; 
-
-            document.body.appendChild(flyingEmoji);
-
-            // Keyframes with curve targeting the CENTER
-            const flyAnimation = flyingEmoji.animate([
-                // Start off-screen, small, semi-visible
-                { transform: `translate(0, ${deltaY}) scale(0.6)`, opacity: 0.8, offset: 0 }, 
-                 // Peak of the vertical arc
-                { transform: `translate(${deltaX / 2}px, ${deltaY - curveHeight}px) scale(0.8)`, opacity: 1, offset: 0.4 },
-                // Land near center, bounce up slightly
-                { transform: `translate(${deltaX}px, ${deltaY - 15}px) scale(1.1)`, opacity: 1, offset: 0.8 }, 
-                // Settle at center
-                { transform: `translate(${deltaX}px, ${deltaY}) scale(1)`, opacity: 1, offset: 0.9 },
-                // Fade out at center
-                { transform: `translate(${deltaX}px, ${deltaY}) scale(0.9)`, opacity: 0, offset: 1 } 
-              ], {
-                duration: 1000, // Keep duration
-                easing: 'ease-out',
-                fill: 'forwards'
-              });
-
-            flyAnimation.onfinish = () => {
-                 if (flyingEmoji.parentNode === document.body) {
-                    document.body.removeChild(flyingEmoji);
-                }
-            };
+        // Clean up listeners and state
+        function cleanupRoomListeners() {
+             if (roomRef) roomRef.off();
+             if (kickedUsersRef && currentUserId) {
+                 const userKickedRef = database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`);
+                 userKickedRef.off();
+             }
+             if (userRef) userRef.onDisconnect().cancel();
+             clearInterval(countdownInterval);
+             roomRef = null; participantsRef = null; kickedUsersRef = null; userRef = null;
         }
 
-        // ***** NEW FUNCTION *****
-        // Send animation event to Firebase
-        function sendEmojiAnimationEvent(targetUserId, emojiChar) {
-            if (!currentRoomId || !currentUserId) return; // <<< Also check currentUserId
-            const animationsRef = ref(database, `rooms/${currentRoomId}/animations`);
-            const newAnimationRef = push(animationsRef);
-
-            const animationData = {
-                targetUserId: targetUserId,
-                emojiChar: emojiChar,
-                senderUserId: currentUserId, // <<< ADDED: ID of the user sending the emoji
-                timestamp: serverTimestamp()
-            };
-            // ... (rest of the function: set, then, catch) ...
-
-             set(newAnimationRef, animationData)
-                 .then(() => {
-                     // Play locally immediately
-                     const targetContainer = document.getElementById(`container-${targetUserId}`); 
-                     console.log('[sendEmojiAnimationEvent] Found target for local play:', targetContainer); // <<< ADD LOG
-                     if (targetContainer) {
-                        triggerEmojiAnimation(targetContainer, emojiChar); 
-                     } else {
-                        console.warn("Target container not found for local animation", targetUserId);
-                     }
-
-                     // Schedule deletion
-                     setTimeout(() => {
-                         remove(newAnimationRef).catch(err => console.warn("Could not remove animation node:", err));
-                     }, 3000);
-                 })
-                 .catch(error => {
-                     console.error("Error sending animation event:", error);
-                     showMessage("Fehler beim Senden der Animation.");
-                 });
+        function cleanupAndRedirect() {
+            cleanupRoomListeners();
+            currentRoomId = null; currentUsername = null;
+            window.location.hash = '';
+            showScreen(createRoomScreen);
         }
 
-        // --- Initialization ---
 
-        // Initial setup: Read URL hash and show appropriate screen
-        handleRouteChange();
+        // --- Event Listeners ---
+        createRoomButton.addEventListener('click', handleCreateRoom);
+        joinRoomButton.addEventListener('click', handleJoinRoom);
+        revealButton.addEventListener('click', handleRevealVotes);
+        resetButton.addEventListener('click', handleReset);
+        copyLinkButton.addEventListener('click', copyInviteLink);
 
-        // Listen for hash changes (e.g., user navigating back/forward or link sharing)
-        window.addEventListener('hashchange', handleRouteChange);
-
-        // Add event listener for the copy link button
-        // Ensure the button exists before adding listener (it's only in pokerRoomScreen)
-        // We can add it here, or more safely, add it when pokerRoomScreen becomes visible.
-        // Let's add it here and rely on the button element existing when needed.
-        const copyBtn = document.getElementById('copyLinkButton');
-         if (copyBtn) {
-            copyBtn.addEventListener('click', handleCopyLink);
-         } else {
-            // If element not found immediately, try finding it after slight delay
-            // (useful if script runs before full DOM parsing, though type="module" helps)
-            setTimeout(() => {
-                 const copyBtnDelayed = document.getElementById('copyLinkButton');
-                 if(copyBtnDelayed) {
-                     copyBtnDelayed.addEventListener('click', handleCopyLink);
-                 }
-            }, 0);
-         }
-
-        // <<< Added: Event listeners for Enter key in inputs >>>
+        // Add Enter key listener for room name input
         roomNameInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
-                event.preventDefault(); // Prevent default form submission behavior
+                event.preventDefault(); // Prevent default form submission if any
                 createRoomButton.click(); // Trigger the button click
             }
         });
 
+        // Add Enter key listener for display name input
         displayNameInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
-                event.preventDefault();
-                joinRoomButton.click();
+                event.preventDefault(); // Prevent default form submission if any
+                joinRoomButton.click(); // Trigger the button click
             }
         });
 
-        // <<< NEW: Event listener for return button on kicked screen >>>
-        const returnToStartButton = document.getElementById('returnToStartButton');
-        if (returnToStartButton) {
-            returnToStartButton.addEventListener('click', () => {
-                cleanupAndRedirect(); // Perform full cleanup and redirect
-            });
-        } else {
-            // Optional: Handle if button not found immediately
-            setTimeout(() => {
-                 const returnBtnDelayed = document.getElementById('returnToStartButton');
-                 if(returnBtnDelayed) {
-                     returnBtnDelayed.addEventListener('click', cleanupAndRedirect);
-                 }
-            }, 0);
-        }
-
-        // <<< Global listener to hide panels on click outside >>>
-        document.addEventListener('click', (event) => {
-            // Check if the click target is outside any participant card group AND outside any panel wrapper
-            if (!event.target.closest('.group') && !event.target.closest('.panels-wrapper')) {
-                if (openPanelUserId) { // Only act if a panel was locked open
-                    // Find the specific panel that was open and close it
-                     const openPanel = document.querySelector(`#participantsList .panels-wrapper[data-user-id="${openPanelUserId}"]`);
-                     openPanel?.classList.remove('visible');
-                    openPanelUserId = null; // Reset the lock state
+        // --- Initialization ---
+        function initializeApp() {
+            lucide.createIcons();
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                currentRoomId = hash;
+                 database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
+                    if (snapshot.exists() && snapshot.val() === true) {
+                        showScreen(kickedOutScreen);
+                    } else {
+                        database.ref(`rooms/${currentRoomId}`).once('value', roomSnapshot => {
+                            if (roomSnapshot.exists()) {
+                                showScreen(enterNameScreen);
+                            } else {
+                                alert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht."); // GERMAN
+                                window.location.hash = '';
+                                showScreen(createRoomScreen);
+                            }
+                        }).catch(error => {
+                             console.error("Error checking room existence:", error);
+                             alert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut."); // GERMAN
+                             window.location.hash = '';
+                             showScreen(createRoomScreen);
+                        });
+                    }
+                 }).catch(error => {
+                      console.error("Error checking kicked status:", error);
+                      showScreen(createRoomScreen);
+                 });
+            } else {
+                showScreen(createRoomScreen);
+            }
+             window.addEventListener('hashchange', () => {
+                const newHash = window.location.hash.substring(1);
+                if (!newHash || (currentRoomId && newHash !== currentRoomId)) {
+                    if (createRoomScreen.classList.contains('hidden') && kickedOutScreen.classList.contains('hidden')) {
+                         console.log("Hash changed or cleared, redirecting to create screen.");
+                         cleanupAndRedirect();
+                    }
                 }
-             }
-             // Clicks inside a group or panel are ignored here
-        });
-
+            });
+        }
+        initializeApp();
     </script>
-
-    <style>
-        /* Add custom styles or overrides here */
-        body {
-            font-family: 'Inter', sans-serif; /* Using Inter font via Tailwind default */
-        }
-        /* Prevent participant cards from shrinking too much when wrapping */
-        #participantsList > div {
-            flex-shrink: 0;
-        }
-         /* Simple pulsing animation for loading placeholders */
-        @keyframes pulse {
-            50% { opacity: .5; }
-        }
-        .animate-pulse-simple {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        /* Style for the hover reaction panel */
-        .reaction-panel {
-            z-index: 20;
-            display: none;
-            position: absolute;
-            bottom: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: white;
-            border-radius: 1rem;
-            padding: 4px 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            display: flex;
-            gap: 4px;
-            opacity: 0;
-            transition: opacity 0.15s ease-in-out, bottom 0.15s ease-in-out;
-            pointer-events: none;
-        }
-
-        /* Show panel on group hover */
-        .group:hover .reaction-panel {
-             display: flex; /* Make it flex when hovered */
-             opacity: 1; /* Fade in */
-             bottom: -30px; /* Move slightly further down */
-             pointer-events: auto; /* Allow clicks */
-        }
-
-        /* Style for individual reaction emojis */
-        .reaction-emoji {
-            cursor: pointer;
-            font-size: 1.1rem; /* Slightly larger emojis */
-            padding: 2px;
-            border-radius: 50%;
-            transition: transform 0.1s ease-out;
-        }
-        .reaction-emoji:hover {
-            transform: scale(1.3); /* Pop effect on hover */
-        }
-        .kick-button-style { /* Re-using kick button class name for consistency */
-             cursor: pointer;
-             font-size: 1rem; /* Adjust size if needed */
-             padding: 3px; /* Slightly more padding */
-             margin-left: 4px; /* Space before kick button */
-             color: #ef4444; /* Red-600 */
-             transition: transform 0.1s ease-out, color 0.1s ease-out;
-        }
-        .kick-button-style:hover {
-             transform: scale(1.2);
-             color: #b91c1c; /* Red-800 */
-        }
-
-        /* --- Animation --- */
-        /* Removed the old keyframes, will define new ones dynamically or use JS */
-
-        .emoji-animate {
-             /* Styles set dynamically by JS now */
-             position: fixed;
-             font-size: 2rem;
-             z-index: 999;
-             pointer-events: none;
-        }
-
-        /* <<< NEW: Custom Tooltip Style >>> */
-        /* 
-        .custom-tooltip {
-            position: absolute;
-            bottom: 100%; 
-            left: 50%;
-            transform: translateX(-50%);
-            margin-bottom: 8px; 
-            background-color: rgba(0, 0, 0, 0.8); 
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem; 
-            line-height: 1rem; 
-            white-space: nowrap; 
-            z-index: 30; 
-            pointer-events: none; 
-            opacity: 0; 
-            transition: opacity 0.1s ease-in-out;
-        }
-         .custom-tooltip.visible {
-            opacity: 1; 
-         }
-        */
-
-        /* <<< NEW: Wrapper for both panels >>> */
-        .panels-wrapper {
-            position: absolute;
-            bottom: -40px; /* Set final position directly */
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            align-items: center; /* Align items vertically */
-            gap: 8px; /* Space between emoji panel and kick panel */
-            opacity: 0;
-            /* Transition opacity (no delay needed here) */
-            transition: opacity 0.15s ease-in-out;
-            pointer-events: none; /* <<< Make panels non-interactive by default */
-            z-index: 20;
-        }
-
-        /* <<< NEW: Style for Emoji Panel >>> */
-        .emoji-panel {
-            background-color: white;
-            border-radius: 1rem; /* Rounded corners */
-            padding: 4px 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); /* Softer shadow */
-            display: flex;
-            gap: 4px;
-        }
-
-        /* <<< NEW: Style for Kick Panel (Circle) >>> */
-        .kick-panel {
-            background-color: white;
-            border-radius: 50%; /* Make it a circle */
-            width: 32px;  /* Fixed width */
-            height: 32px; /* Fixed height */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); /* Softer shadow */
-        }
-
-        /* REMOVE Hover Rule - Handled by JS now */
-        /* 
-        .group:hover .panels-wrapper {
-             opacity: 1; 
-             pointer-events: auto; 
-             transition: opacity 0.15s ease-in-out; 
-        } 
-        */
-
-        /* <<< NEW: Rule for VISIBLE panels (set by JS) >>> */
-        .panels-wrapper.visible {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        /* Style for individual reaction emojis (no change needed) */
-        .reaction-emoji {
-            cursor: pointer;
-            font-size: 1.1rem; /* Slightly larger emojis */
-            padding: 2px;
-            border-radius: 50%;
-            transition: transform 0.1s ease-out;
-        }
-        .reaction-emoji:hover {
-            transform: scale(1.3); /* Pop effect on hover */
-        }
-        .kick-button-style { /* Adjusted style for kick button inside circle */
-             cursor: pointer;
-             display: flex; /* Use flex to center icon */
-             align-items: center;
-             justify-content: center;
-             width: 100%; /* Fill the circle */
-             height: 100%; /* Fill the circle */
-             color: #ef4444; /* Red-600 */
-             transition: transform 0.1s ease-out, color 0.1s ease-out;
-        }
-        .kick-button-style:hover {
-             transform: scale(1.1); /* Slightly smaller scale for icon */
-             color: #b91c1c; /* Red-800 */
-        }
-
-        /* --- Animation --- */
-        /* Removed the old keyframes, will define new ones dynamically or use JS */
-
-        .emoji-animate {
-             /* Styles set dynamically by JS now */
-             position: fixed;
-             font-size: 2rem;
-             z-index: 999;
-             pointer-events: none;
-        }
-
-        /* <<< NEW: Custom Tooltip Style >>> */
-        /* 
-        .custom-tooltip {
-            position: absolute;
-            bottom: 100%; 
-            left: 50%;
-            transform: translateX(-50%);
-            margin-bottom: 8px; 
-            background-color: rgba(0, 0, 0, 0.8); 
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem; 
-            line-height: 1rem; 
-            white-space: nowrap; 
-            z-index: 30; 
-            pointer-events: none; 
-            opacity: 0; 
-            transition: opacity 0.1s ease-in-out;
-        }
-         .custom-tooltip.visible {
-            opacity: 1; 
-         }
-        */
-    </style>
-    </head>
-<body class="bg-gray-100 flex items-center justify-center p-4">
-
-    <div class="relative w-full max-w-4xl bg-white rounded-xl shadow-xl p-6 md:p-8">
-
-         <!-- <<< Added Loading Screen >>> -->
-         <div id="loadingScreen" class="text-center p-10">
-             <p class="text-lg text-gray-600">Lade...</p>
-         </div>
-
-        <div id="createRoomScreen" class="hidden text-center">
-            <h1 class="text-3xl font-bold mb-6 text-gray-800">Planning Poker</h1>
-            <p class="mb-4 text-gray-600">Erstelle einen neuen Raum für dein Team.</p>
-            <div class="flex flex-col items-center w-full max-w-sm mx-auto">
-                <input type="text" id="roomNameInput" placeholder="Raumname eingeben" class="w-full px-4 py-2 border rounded-lg mb-3 focus:ring-indigo-500 focus:border-indigo-500">
-                <button id="createRoomButton" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out">
-                    Raum erstellen
-                </button>
-            </div>
-          
-        </div>
-
-        <div id="joinRoomScreen" class="hidden text-center">
-            <h1 id="roomNameDisplay" class="text-2xl font-bold mb-6 text-gray-800">Trete Raum bei...</h1>
-             <p class="mb-4 text-gray-600">Gib deinen Namen ein, um beizutreten.</p>
-            <div class="flex flex-col items-center w-full max-w-sm mx-auto">
-                <input type="text" id="displayNameInput" placeholder="Dein Anzeigename" class="w-full px-4 py-2 border rounded-lg mb-3 focus:ring-green-500 focus:border-green-500">
-                <button id="joinRoomButton" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out">
-                    Raum beitreten
-                </button>
-            </div>
-        </div>
-
-        <div id="pokerRoomScreen" class="hidden">
-            <!-- New container for title and copy button -->
-            <div class="relative flex justify-center items-center mb-4"> 
-                <h1 class="text-center text-2xl font-bold text-gray-800">Planning Poker</h1>
-                <!-- Moved Copy Link Button here -->
-                 <button id="copyLinkButton" title="Einladungslink kopieren" class="hidden absolute right-0 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
-                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                    </svg>
-                </button>
-            </div>
-
-            <!-- <<< NEW: Countdown Display Area >>> -->
-            <div id="countdownDisplay" class="hidden text-center my-4">
-                <span class="text-6xl font-bold text-blue-600"></span>
-            </div>
-            <!-- <<< END: Countdown Display Area >>> -->
-
-            <div class="mb-6">
-                <h2 class="text-lg font-semibold mb-3 text-gray-700">Teilnehmer:</h2>
-                <div id="participantsList" class="flex flex-wrap gap-3 pb-2">
-                    <div class="flex flex-col items-center p-2 rounded-lg shadow-sm bg-white min-w-[80px] animate-pulse-simple">
-                         <div class="text-sm font-medium text-center mb-2 truncate bg-gray-200 h-4 w-12 rounded mx-auto"></div>
-                         <div class="w-10 h-10 flex items-center justify-center rounded border bg-gray-200 border-gray-300"></div>
-                     </div>
-                     </div>
-            </div>
-
-             <div id="resultsSummary" class="hidden p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                 <h3 class="text-lg font-semibold mb-2 text-center">Durchschnitt</h3>
-                </div>
-
-             <!-- Moved Reveal Button here -->
-            <div class="flex justify-center my-2">
-                <button id="revealButton" class="min-w-[110px] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
-                    Aufdecken
-                </button>
-             </div>
-
-            <div class="mb-6">
-                <h2 class="text-lg font-semibold mb-3 text-gray-700">Deine Stimme:</h2>
-                <div id="votingCards" class="flex flex-wrap justify-center gap-2">
-                    <!-- Voting cards will be rendered here by JS -->
-                    </div>
-            </div>
-
-            <!-- Container now only holds Reset button (conditionally visible) -->
-            <div class="flex flex-col sm:flex-row justify-center gap-3 mt-6">
-                <button id="resetButton" class="hidden bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
-                    Zurücksetzen
-                </button>
-            </div>
-        </div>
-
-         <!-- Modified alert box for centering -->
-         <div id="messageBox" class="hidden fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 border rounded-lg shadow-lg bg-white z-50 max-w-md w-11/12 md:w-auto">
-            <div class="flex items-center">
-                <span id="messageText" class="flex-grow mr-4"></span>
-                <button id="closeMessageButton" class="font-bold text-xl">&times;</button>
-            </div>
-        </div>
-
-        <!-- <<< NEW Kicked Out Screen >>> -->
-        <div id="kickedOutScreen" class="hidden text-center">
-            <h1 class="text-3xl font-bold mb-6 text-red-600">Du wurdest entfernt</h1>
-            <p class="mb-4 text-gray-600">Du wurdest aus dem Raum entfernt.</p>
-          
-        </div>
-        <!-- <<< END Kicked Out Screen >>> -->
-
-    </div> </body>
+</body>
 </html>
