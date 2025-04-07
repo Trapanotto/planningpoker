@@ -892,11 +892,17 @@
 
         // Listener for the button on the Create screen to check for a previous room
         checkLastRoomButton.addEventListener('click', () => {
-             console.log('Checking DB for last room ID via button click...');
+             console.log('Check last room button clicked.');
+             
+             // Explicitly check currentUserId at time of click
              if (!currentUserId) {
-                 showInPageAlert("Authentifizierung nicht bereit. Bitte kurz warten.", "error");
-                 return;
+                 console.error('Check last room clicked, but currentUserId is null/undefined!');
+                 showInPageAlert("Authentifizierung wird initialisiert. Bitte kurz warten und erneut versuchen.", "error");
+                 return; // Prevent DB query without a user ID
              }
+
+             console.log('Checking DB for last room ID for user:', currentUserId); // Log the ID being used
+
              const userProfileRef = database.ref(`/userProfiles/${currentUserId}/lastRoomId`);
              userProfileRef.once('value')
                  .then(snapshot => {
