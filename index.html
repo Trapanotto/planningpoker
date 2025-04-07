@@ -130,7 +130,7 @@
         <h1 class="text-2xl font-bold mb-4 text-gray-700">Raum beitreten</h1>
         <p class="text-gray-600 mb-3">Gib deinen Anzeigenamen für diese Sitzung ein:</p>
         <input type="text" id="display-name-input" placeholder="Dein Name" class="w-full px-4 py-2 border rounded-md mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <button id="join-room-button" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
+        <button id="join-room-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
             Sitzung beitreten
         </button>
     </div>
@@ -837,17 +837,29 @@
         function initializeApp() {
             lucide.createIcons();
             let hash = window.location.hash.substring(1);
-            const lastRoomId = localStorage.getItem('planningPokerLastRoomId');
+            const lastRoomId = localStorage.getItem('planningPokerLastRoomId'); 
             currentUserId = localStorage.getItem('planningPokerUserId');
 
-            let initialRoomIdToLoad = null; // Determine the target room ID first
+            let initialRoomIdToLoad = null;
 
             if (hash) {
+                // If there is a hash in the URL, always use it
                 initialRoomIdToLoad = hash;
-            } else if (lastRoomId && currentUserId) {
-                console.log('No hash, attempting to use last known room:', lastRoomId);
-                initialRoomIdToLoad = lastRoomId;
-                // Don't set window.location.hash here - handle internally
+            } else {
+                // No hash in the URL. 
+                // Only use localStorage if we think the user might be reloading after a disconnect
+                // (Simple check: do we have a userId? More robust checks are complex)
+                if (lastRoomId && currentUserId) {
+                    // Potentially disconnected state, try using last room ID
+                     console.log('No hash, attempting to use last known room:', lastRoomId);
+                     initialRoomIdToLoad = lastRoomId;
+                     // We don't set the hash here
+                } else {
+                     // No hash, no stored IDs -> definitely wants to create/start fresh
+                     console.log('No hash and no stored IDs found.');
+                     // Clear any potentially stale lastRoomId just in case
+                     localStorage.removeItem('planningPokerLastRoomId');
+                }
             }
 
             if (initialRoomIdToLoad) {
