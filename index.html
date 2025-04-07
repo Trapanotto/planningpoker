@@ -836,8 +836,8 @@
         copyLinkButton.addEventListener('click', copyInviteLink);
         rejoinLastRoomButton.addEventListener('click', () => {
             console.log('User chose to join last room.');
-            localStorage.setItem('planningPokerLastRoomId', localStorage.getItem('planningPokerLastRoomId'));
-            showScreen(enterNameScreen);
+            const roomToJoin = localStorage.getItem('planningPokerLastRoomId');
+            loadRoomForJoining(roomToJoin); // Use the extracted function
         });
         forceCreateNewButton.addEventListener('click', () => {
             console.log('User chose to create a new room.');
@@ -868,68 +868,19 @@
             const lastRoomId = localStorage.getItem('planningPokerLastRoomId');
             currentUserId = localStorage.getItem('planningPokerUserId');
 
-            let initialRoomIdToLoad = null;
-
             if (hash) {
-                initialRoomIdToLoad = hash;
+                 console.log('Hash found, loading room:', hash);
+                 loadRoomForJoining(hash); // Use the extracted function
             } else if (lastRoomId && currentUserId) {
                 console.log('No hash, found last room ID:', lastRoomId);
-                // Don't load immediately, show the choice screen
-                lastRoomIdDisplay.textContent = lastRoomId; // Show the ID
+                // Show the choice screen
+                lastRoomIdDisplay.textContent = lastRoomId; 
                 showScreen(rejoinOrCreateScreen);
-                return; // Stop initialization here, wait for user choice
-            }
-
-            if (initialRoomIdToLoad) {
-                currentRoomId = initialRoomIdToLoad; // Set currentRoomId EARLY
-                console.log('Attempting to load room:', currentRoomId);
-                showScreen(enterNameScreen); // Show screen before async checks
-
-                // Now proceed with checks for kicked/existence
-                 database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
-                    if (snapshot.exists() && snapshot.val() === true) {
-                        // Kicked - clear stored ID and show kicked screen
-                        localStorage.removeItem('planningPokerLastRoomId');
-                        showScreen(kickedOutScreen);
-                    } else {
-                        // Not kicked, check if room exists
-                        database.ref(`rooms/${currentRoomId}`).once('value', roomSnapshot => {
-                            if (roomSnapshot.exists()) {
-                                // Room exists, user not kicked - stay on enterNameScreen
-                            } else {
-                                // Room doesn't exist - show error, clear IDs, stay on screen, disable join
-                                showInPageAlert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.", 'error');
-                                window.location.hash = ''; // Clear hash if it was invalid
-                                currentRoomId = null; // Clear internal ID
-                                localStorage.removeItem('planningPokerLastRoomId');
-                                joinRoomButton.disabled = true;
-                            }
-                        }).catch(error => {
-                             // Error checking room - show error, clear IDs, stay on screen, disable join
-                             console.error("Error checking room existence:", error);
-                             showInPageAlert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut.", 'error');
-                             window.location.hash = '';
-                             currentRoomId = null;
-                             localStorage.removeItem('planningPokerLastRoomId');
-                             joinRoomButton.disabled = true;
-                        });
-                    }
-                 }).catch(error => {
-                      // Error checking kicked status - show error, clear IDs, stay on screen, disable join
-                      console.error("Error checking kicked status:", error);
-                      showInPageAlert("Konnte den Status nicht überprüfen. Bitte versuche es erneut.", 'error');
-                       window.location.hash = '';
-                       currentRoomId = null;
-                       localStorage.removeItem('planningPokerLastRoomId');
-                       joinRoomButton.disabled = true;
-                       // Make sure we don't proceed without a user ID if auth failed initially
-                       if (!auth.currentUser) {
-                           showScreen(createRoomScreen); // Fallback if auth is lost somehow
-                       }
-                 });
+                // Stop initialization here, wait for user choice via buttons
             } else {
-                // No hash and no last room ID, show create screen
-                showScreen(createRoomScreen);
+                 // No hash and no last room ID, show create screen
+                 console.log('No hash or last room ID, showing create screen.');
+                 showScreen(createRoomScreen);
             }
 
              // Revised hashchange listener
@@ -966,6 +917,62 @@
                  showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null); // Show persistent error
                  document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>'; // Replace body
             });
+
+        // Function to handle loading room checks and showing enter name screen
+        function loadRoomForJoining(roomId) {
+            if (!roomId) return; // Safety check
+
+            currentRoomId = roomId;
+            console.log('Attempting to load room for joining:', currentRoomId);
+            showScreen(enterNameScreen); // Show screen before async checks
+
+            // Perform checks for kicked/existence
+            database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
+                if (snapshot.exists() && snapshot.val() === true) {
+                    // Kicked - clear stored ID and show kicked screen
+                    localStorage.removeItem('planningPokerLastRoomId');
+                    showScreen(kickedOutScreen);
+                } else {
+                    // Not kicked, check if room exists
+                    database.ref(`rooms/${currentRoomId}`).once('value', roomSnapshot => {
+                        if (roomSnapshot.exists()) {
+                            // Room exists, user not kicked - stay on enterNameScreen
+                            // Ensure the hash matches the loaded room if possible
+                             if (window.location.hash.substring(1) !== currentRoomId) {
+                                 window.location.hash = currentRoomId;
+                             }
+                        } else {
+                            // Room doesn't exist - show error, clear IDs, stay on screen, disable join
+                            showInPageAlert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.", 'error');
+                            window.location.hash = ''; // Clear hash if it was invalid
+                            currentRoomId = null; // Clear internal ID
+                            localStorage.removeItem('planningPokerLastRoomId');
+                            joinRoomButton.disabled = true;
+                        }
+                    }).catch(error => {
+                         // Error checking room - show error, clear IDs, stay on screen, disable join
+                         console.error("Error checking room existence:", error);
+                         showInPageAlert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut.", 'error');
+                         window.location.hash = '';
+                         currentRoomId = null;
+                         localStorage.removeItem('planningPokerLastRoomId');
+                         joinRoomButton.disabled = true;
+                    });
+                }
+            }).catch(error => {
+                  // Error checking kicked status - show error, clear IDs, stay on screen, disable join
+                  console.error("Error checking kicked status:", error);
+                  showInPageAlert("Konnte den Status nicht überprüfen. Bitte versuche es erneut.", 'error');
+                   window.location.hash = '';
+                   currentRoomId = null;
+                   localStorage.removeItem('planningPokerLastRoomId');
+                   joinRoomButton.disabled = true;
+                   // Make sure we don't proceed without a user ID if auth failed initially
+                   if (!auth.currentUser) {
+                       showScreen(createRoomScreen); // Fallback if auth is lost somehow
+                   }
+             });
+        }
     </script>
 </body>
 </html>
