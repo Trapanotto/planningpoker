@@ -198,6 +198,13 @@
         </button>
     </div>
 
+    <!-- Disconnected Screen -->
+    <div id="disconnected-screen" class="hidden bg-white p-8 rounded-lg shadow-md w-full max-w-md text-center max-h-[30vh] mt-4">
+        <h1 class="text-2xl font-bold mb-6 text-orange-600">Verbindung verloren</h1>
+        <p class="text-gray-600 mb-4">Deine Verbindung wurde unterbrochen oder du wurdest ausgeloggt.</p>
+
+    </div>
+
     <script type="module">
         // Firebase Configuration (REPLACE with your actual config)
         const firebaseConfig = {
@@ -232,6 +239,7 @@
         const pokerRoomScreen = document.getElementById('poker-room-screen');
         const kickedOutScreen = document.getElementById('kicked-out-screen');
         const rejoinOrCreateScreen = document.getElementById('rejoin-or-create-screen');
+        const disconnectedScreen = document.getElementById('disconnected-screen');
 
         const roomNameInput = document.getElementById('room-name-input');
         const createRoomButton = document.getElementById('create-room-button');
@@ -282,6 +290,7 @@
             pokerRoomScreen.classList.add('hidden');
             kickedOutScreen.classList.add('hidden');
             rejoinOrCreateScreen.classList.add('hidden');
+            disconnectedScreen.classList.add('hidden');
             screenToShow.classList.remove('hidden');
 
             // Autofocus the relevant input field
@@ -943,7 +952,7 @@
 
         // NEW CODE: Use onAuthStateChanged to handle initialization
         auth.onAuthStateChanged(user => {
-            console.log('Auth state changed. User:', user ? user.uid : 'null');
+            console.log('Auth state changed. User:', user ? user.uid : 'null', 'App Initialized:', window.initializeAppCalled);
             if (user) {
                 // User is signed in.
                 currentUserId = user.uid;
@@ -952,14 +961,23 @@
                     initializeApp();
                 }
             } else {
-                // User is signed out or session expired. Try to sign in again.
-                console.log('No authenticated user found, attempting anonymous sign-in...');
-                auth.signInAnonymously()
-                    .catch(error => {
-                         console.error("Re-attempting anonymous sign-in failed:", error);
-                         showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null); 
-                         document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
-                    });
+                // User is signed out.
+                currentUserId = null; // Clear user ID
+                // If app was already initialized, it means user was logged in and now is not.
+                if (window.initializeAppCalled) {
+                     console.log('User signed out after app initialization.');
+                     cleanupRoomListeners(); // Clean up DB listeners if any
+                     showScreen(disconnectedScreen);
+                } else {
+                    // App not initialized yet, try to sign in anonymously.
+                    console.log('No authenticated user found, attempting anonymous sign-in...');
+                    auth.signInAnonymously()
+                        .catch(error => {
+                             console.error("Re-attempting anonymous sign-in failed:", error);
+                             showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null); 
+                             document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
+                        });
+                }
             }
         });
 
