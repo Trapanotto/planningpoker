@@ -92,9 +92,29 @@
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Alert Banner Styles */
+        .alert-error {
+            background-color: #fecaca; /* Light red */
+            color: #b91c1c; /* Dark red */
+        }
+        .alert-success {
+             background-color: #dcfce7; /* Light green */
+             color: #166534; /* Dark green */
+        }
+        .alert-info {
+             background-color: #dbeafe; /* Light blue */
+             color: #1e40af; /* Dark blue */
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex justify-center items-start">
+
+    <!-- In-Page Alert Container -->
+    <div id="alert-banner" class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-md shadow-md text-sm font-medium transition-all duration-300 ease-in-out max-w-md w-full text-center">
+        <span id="alert-message"></span>
+        <!-- Optional: Add a close button if needed -->
+    </div>
 
     <div id="create-room-screen" class="hidden bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center mt-4">
         <h1 class="text-2xl font-bold mb-4 text-gray-700">Planning Poker</h1>
@@ -157,7 +177,7 @@
 
     </div>
 
-     <div id="kicked-out-screen" class="hidden bg-white p-8 rounded-lg shadow-md w-full max-w-md text-center max-h-[30vh]">
+     <div id="kicked-out-screen" class="hidden bg-white p-8 rounded-lg shadow-md w-full max-w-md text-center max-h-[30vh] mt-4">
         <h1 class="text-2xl font-bold mb-6 text-red-600">Du wurdest entfernt</h1>
         <p class="text-gray-600 mb-4">Du wurdest aus der Sitzung entfernt.</p>
         <button onclick="window.location.href = window.location.pathname;" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
@@ -213,8 +233,29 @@
         const resultsSummarySection = document.getElementById('results-summary-section');
         const averageVoteDisplay = document.getElementById('average-vote');
         const voteDistributionDisplay = document.getElementById('vote-distribution');
+        const alertBanner = document.getElementById('alert-banner');
+        const alertMessage = document.getElementById('alert-message');
 
         // --- Functions ---
+
+        // In-Page Alert Function
+        let alertTimeout = null;
+        function showInPageAlert(message, type = 'info', duration = 3000) {
+            clearTimeout(alertTimeout); // Clear previous timeout if any
+            alertMessage.textContent = message;
+            alertBanner.className = alertBanner.className.replace(/alert-\w+/g, ''); // Remove previous type classes
+            alertBanner.classList.add(`alert-${type}`); // Add new type class
+            alertBanner.classList.remove('hidden');
+            alertBanner.style.opacity = '1'; // Ensure visible
+
+            if (duration) {
+                 alertTimeout = setTimeout(() => {
+                    alertBanner.style.opacity = '0';
+                    // Wait for transition before hiding completely
+                    setTimeout(() => alertBanner.classList.add('hidden'), 300);
+                 }, duration);
+            }
+        }
 
         // Generate a simple unique ID
         function generateUserId() {
@@ -241,7 +282,7 @@
         async function handleCreateRoom() {
             const roomName = roomNameInput.value.trim();
             if (!roomName) {
-                alert('Bitte gib einen Raumnamen ein.'); // GERMAN
+                showInPageAlert('Bitte gib einen Raumnamen ein.', 'error'); // Use new alert
                 return;
             }
 
@@ -260,7 +301,7 @@
                 showScreen(enterNameScreen);
             } catch (error) {
                 console.error("Error creating room:", error);
-                alert('Raum konnte nicht erstellt werden. Bitte versuche es erneut.'); // GERMAN
+                showInPageAlert('Raum konnte nicht erstellt werden. Bitte versuche es erneut.', 'error'); // Use new alert
             }
         }
 
@@ -268,11 +309,11 @@
         async function handleJoinRoom() {
             const displayName = displayNameInput.value.trim();
             if (!displayName) {
-                alert('Bitte gib deinen Anzeigenamen ein.'); // GERMAN
+                showInPageAlert('Bitte gib deinen Anzeigenamen ein.', 'error'); // Use new alert
                 return;
             }
             if (!currentRoomId) {
-                alert('Ungültige Raum-ID.'); // GERMAN
+                showInPageAlert('Ungültige Raum-ID.', 'error'); // Use new alert
                 showScreen(createRoomScreen); // Go back to start
                 window.location.hash = '';
                 return;
@@ -315,6 +356,9 @@
                 // Set up listener for kicked status
                 listenForKickedStatus();
 
+                // Store last room ID in session storage
+                sessionStorage.setItem('planningPokerLastRoomId', currentRoomId);
+
                 showScreen(pokerRoomScreen);
                 renderVotingCards();
                 // Initialize Lucide icons after showing the screen
@@ -322,7 +366,7 @@
 
             } catch (error) {
                 console.error("Error joining room:", error);
-                alert('Beitritt zum Raum fehlgeschlagen. Der Raum existiert möglicherweise nicht oder es gab ein Verbindungsproblem.'); // GERMAN
+                showInPageAlert('Beitritt zum Raum fehlgeschlagen. Der Raum existiert möglicherweise nicht oder es gab ein Verbindungsproblem.', 'error'); // Use new alert
                 window.location.hash = ''; // Clear invalid hash
                 showScreen(createRoomScreen);
             }
@@ -335,7 +379,7 @@
             roomRef.on('value', (snapshot) => {
                 if (!snapshot.exists()) {
                     // Room deleted or doesn't exist
-                    alert('Dieser Raum existiert nicht mehr.'); // GERMAN
+                    showInPageAlert('Dieser Raum existiert nicht mehr.', 'error', 5000); // Longer duration
                     cleanupAndRedirect();
                     return;
                 }
@@ -363,7 +407,7 @@
 
             }, (error) => {
                 console.error("Error listening to room changes:", error);
-                alert("Verbindungsfehler. Bitte aktualisiere die Seite."); // GERMAN
+                showInPageAlert("Verbindungsfehler. Bitte aktualisiere die Seite.", 'error', 5000); // Longer duration
                 cleanupAndRedirect();
             });
         }
@@ -379,6 +423,7 @@
                     showScreen(kickedOutScreen);
                     cleanupRoomListeners();
                     sessionStorage.removeItem('planningPokerRoomId');
+                    sessionStorage.removeItem('planningPokerLastRoomId');
                 }
             }, (error) => {
                 console.error("Error listening for kicked status:", error);
@@ -473,7 +518,7 @@
                 }
             } catch (error) {
                 console.error("Error casting vote:", error);
-                alert('Stimme konnte nicht abgegeben werden.'); // GERMAN
+                showInPageAlert('Stimme konnte nicht abgegeben werden.', 'error'); // Use new alert
             }
         }
 
@@ -498,7 +543,7 @@
                 await roomRef.update({ revealCountdownEnd: countdownEndTime });
             } catch (error) {
                 console.error("Error initiating reveal:", error);
-                alert('Starten des Aufdeckens fehlgeschlagen.'); // GERMAN
+                showInPageAlert('Starten des Aufdeckens fehlgeschlagen.', 'error'); // Use new alert
                 revealButton.disabled = false;
             }
         }
@@ -567,23 +612,20 @@
                 resultsSummarySection.classList.add('hidden');
             } catch (error) {
                 console.error("Error resetting votes:", error);
-                alert('Zurücksetzen der Stimmen fehlgeschlagen.'); // GERMAN
+                showInPageAlert('Zurücksetzen der Stimmen fehlgeschlagen.', 'error'); // Use new alert
             }
         }
 
          // Handle Kick User button click
         async function handleKickUser(userIdToKick) {
             if (!kickedUsersRef || !userIdToKick || userIdToKick === currentUserId) return;
-            const confirmation = confirm(`Bist du sicher, dass du diesen Benutzer entfernen möchtest?`); // GERMAN
-            if (confirmation) {
-                try {
-                    await database.ref(`rooms/${currentRoomId}/kickedUsers/${userIdToKick}`).set(true);
-                    await database.ref(`rooms/${currentRoomId}/participants/${userIdToKick}`).remove();
-                    console.log(`User ${userIdToKick} kicked.`);
-                } catch (error) {
-                    console.error("Error kicking user:", error);
-                    alert('Benutzer konnte nicht rausgeworfen werden.'); // GERMAN
-                }
+            try {
+                await database.ref(`rooms/${currentRoomId}/kickedUsers/${userIdToKick}`).set(true);
+                await database.ref(`rooms/${currentRoomId}/participants/${userIdToKick}`).remove();
+                console.log(`User ${userIdToKick} kicked.`);
+            } catch (error) {
+                console.error("Error kicking user:", error);
+                showInPageAlert('Benutzer konnte nicht entfernt werden.', 'error'); // Use new alert (updated text)
             }
         }
 
@@ -728,7 +770,7 @@
                 }, 2000);
             }).catch(err => {
                 console.error('Failed to copy link: ', err);
-                alert('Link konnte nicht kopiert werden.'); // GERMAN
+                showInPageAlert('Link konnte nicht kopiert werden.', 'error'); // Use new alert
             });
         }
 
@@ -747,6 +789,7 @@
         function cleanupAndRedirect() {
             cleanupRoomListeners();
             currentRoomId = null; currentUsername = null;
+            sessionStorage.removeItem('planningPokerLastRoomId');
             window.location.hash = '';
             showScreen(createRoomScreen);
         }
@@ -778,33 +821,60 @@
         // --- Initialization ---
         function initializeApp() {
             lucide.createIcons();
-            const hash = window.location.hash.substring(1);
+            let hash = window.location.hash.substring(1);
+            const lastRoomId = sessionStorage.getItem('planningPokerLastRoomId');
+            currentUserId = sessionStorage.getItem('planningPokerUserId'); // Ensure userId is loaded early
+
+            // If no hash, but we have a last room ID and user ID, try using that
+            if (!hash && lastRoomId && currentUserId) {
+                 console.log('No hash, attempting to use last known room:', lastRoomId);
+                 hash = lastRoomId;
+                 // Optionally update the URL hash, or just proceed internally
+                 window.location.hash = hash; // This makes it behave like opening a link
+            }
+
             if (hash) {
                 currentRoomId = hash;
+                 // Optimistically show Enter Name screen if there's a hash
+                 showScreen(enterNameScreen);
+
                  database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
                     if (snapshot.exists() && snapshot.val() === true) {
                         showScreen(kickedOutScreen);
                     } else {
+                        // Not kicked, check if room exists
                         database.ref(`rooms/${currentRoomId}`).once('value', roomSnapshot => {
                             if (roomSnapshot.exists()) {
-                                showScreen(enterNameScreen);
+                                // Room exists, stay on enterNameScreen (already shown)
+                                // Focus should be handled by showScreen
                             } else {
-                                alert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht."); // GERMAN
+                                // Room doesn't exist - show error, clear hash, stay on screen
+                                showInPageAlert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.", 'error');
                                 window.location.hash = '';
-                                showScreen(createRoomScreen);
+                                currentRoomId = null; // Clear invalid ID
+                                joinRoomButton.disabled = true; // Disable join button
                             }
                         }).catch(error => {
+                             // Error checking room - show error, clear hash, stay on screen
                              console.error("Error checking room existence:", error);
-                             alert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut."); // GERMAN
+                             showInPageAlert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut.", 'error');
                              window.location.hash = '';
-                             showScreen(createRoomScreen);
+                             currentRoomId = null;
+                             sessionStorage.removeItem('planningPokerLastRoomId'); // Clear stored ID on error
+                             joinRoomButton.disabled = true;
                         });
                     }
                  }).catch(error => {
+                      // Error checking kicked status - show error, clear hash, stay on screen
                       console.error("Error checking kicked status:", error);
-                      showScreen(createRoomScreen);
+                      showInPageAlert("Konnte den Status nicht überprüfen. Bitte versuche es erneut.", 'error');
+                       window.location.hash = '';
+                       currentRoomId = null;
+                       sessionStorage.removeItem('planningPokerLastRoomId'); // Clear stored ID on error
+                       joinRoomButton.disabled = true;
                  });
             } else {
+                // No hash, show create screen as normal
                 showScreen(createRoomScreen);
             }
              window.addEventListener('hashchange', () => {
