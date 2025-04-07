@@ -383,8 +383,10 @@
                 // Set up listener for kicked status
                 listenForKickedStatus();
 
-                // Store last room ID in localStorage
-                localStorage.setItem('planningPokerLastRoomId', currentRoomId);
+                // Store last room ID in Firebase user profile
+                database.ref(`/userProfiles/${currentUserId}/lastRoomId`).set(currentRoomId)
+                    .then(() => console.log('Stored lastRoomId in DB'))
+                    .catch(err => console.error('Error storing lastRoomId in DB:', err));
 
                 showScreen(pokerRoomScreen);
                 renderVotingCards();
@@ -449,7 +451,6 @@
                     console.log("Kicked status detected.");
                     showScreen(kickedOutScreen);
                     cleanupRoomListeners();
-                    localStorage.removeItem('planningPokerLastRoomId');
                 }
             }, (error) => {
                 console.error("Error listening for kicked status:", error);
@@ -830,8 +831,12 @@
 
         function cleanupAndRedirect() {
             cleanupRoomListeners();
+            // Clear last room ID from DB on explicit redirect/cleanup
+            if (currentUserId) {
+                database.ref(`/userProfiles/${currentUserId}/lastRoomId`).remove()
+                    .catch(err => console.error('Error clearing lastRoomId from DB:', err));
+            }
             currentRoomId = null; currentUsername = null;
-            localStorage.removeItem('planningPokerLastRoomId');
             window.location.hash = '';
             showScreen(createRoomScreen);
         }
@@ -845,12 +850,30 @@
         copyLinkButton.addEventListener('click', copyInviteLink);
         rejoinLastRoomButton.addEventListener('click', () => {
             console.log('User chose to join last room.');
-            const roomToJoin = localStorage.getItem('planningPokerLastRoomId');
-            loadRoomForJoining(roomToJoin); // Use the extracted function
+            // Fetch the ID from the DB again to be sure?
+            // Or assume the one displayed is correct? Let's assume for now.
+            // Fetching again adds delay but is safer if DB could change.
+            // For simplicity, we'll assume the ID shown is the target.
+            database.ref(`/userProfiles/${currentUserId}/lastRoomId`).once('value')
+                .then(snapshot => {
+                     const roomToJoin = snapshot.val();
+                     if(roomToJoin) {
+                        loadRoomForJoining(roomToJoin);
+                     } else {
+                         showInPageAlert("Letzter Raum nicht mehr verfügbar.", "error");
+                         showScreen(createRoomScreen);
+                     }
+                })
+                 .catch(error => {
+                     console.error("Error fetching lastRoomId on rejoin button click:", error);
+                     showInPageAlert("Fehler beim Abrufen des letzten Raums.", "error");
+                 });
         });
         forceCreateNewButton.addEventListener('click', () => {
             console.log('User chose to create a new room.');
-            localStorage.removeItem('planningPokerLastRoomId');
+            if(currentUserId) { // Ensure we have a user ID
+                 database.ref(`/userProfiles/${currentUserId}/lastRoomId`).remove();
+            }
             showScreen(createRoomScreen);
         });
 
@@ -871,70 +894,26 @@
         });
 
         // --- Initial Script Execution --- 
+        // Removed immediate localStorage check logic
+        window.appLogicInitialized = false; 
+        // window.showingRejoinPrompt = false; // This flag is no longer needed here
 
-        window.appLogicInitialized = false; // Flag for setup function
-        window.showingRejoinPrompt = false; // Flag for rejoin prompt
-
-        // Check localStorage immediately on script load
-        const initialLastRoomId = localStorage.getItem('planningPokerLastRoomId');
-        const initialUserId = localStorage.getItem('planningPokerUserId'); // Also check if user ID exists
-
-        if (initialLastRoomId && initialUserId) {
-            console.log('Immediate check found lastRoomId:', initialLastRoomId);
-            window.showingRejoinPrompt = true;
-            // Fetch room name immediately and show prompt
-            const rejoinScreen = document.getElementById('rejoin-or-create-screen');
-            const rejoinDisplay = document.getElementById('last-room-display');
-            if (rejoinScreen && rejoinDisplay) { // Ensure elements exist before DB call
-                 database.ref(`rooms/${initialLastRoomId}/roomName`).once('value')
-                    .then(snapshot => {
-                        let displayName = initialLastRoomId;
-                        if (snapshot.exists() && snapshot.val()) {
-                            displayName = snapshot.val();
-                        }
-                        rejoinDisplay.textContent = displayName;
-                        showScreen(rejoinScreen); // Show screen explicitly
-                    })
-                    .catch(error => {
-                         console.error("Immediate fetch room name error:", error);
-                         rejoinDisplay.textContent = initialLastRoomId;
-                         showScreen(rejoinScreen);
-                    });
-            } else {
-                 console.error("Rejoin screen elements not found immediately!");
-                 // Fallback: Show create screen if elements aren't ready? Or wait?
-                 // For now, let auth handle it, but log the error.
-                 window.showingRejoinPrompt = false; // Revert flag if elements missing
-            }
-        } else {
-             console.log('Immediate check: No lastRoomId or no userId found in localStorage.');
-             // If no rejoin prompt shown, auth will eventually show create screen
-        }
-
-        // Auth Listener - Handles setting userId and triggering app logic if needed
+        // Auth Listener - Handles setting userId and triggering app logic
         auth.onAuthStateChanged(user => {
-            console.log('Auth state changed. User:', user ? user.uid : 'null', 'Rejoin Prompt Shown:', window.showingRejoinPrompt, 'App Logic Initialized:', window.appLogicInitialized);
+            console.log('Auth state changed. User:', user ? user.uid : 'null', 'App Logic Initialized:', window.appLogicInitialized);
             if (user) {
                 currentUserId = user.uid;
-                // Initialize the main app logic ONLY if we didn't already show the rejoin prompt
-                if (!window.showingRejoinPrompt && !window.appLogicInitialized) {
+                // Initialize the main app logic if it hasn't run yet
+                if (!window.appLogicInitialized) {
                     setupApplicationLogic();
                 }
             } else {
                 currentUserId = null;
+                // Show disconnected screen only if the app logic *was* previously initialized
                 if (window.appLogicInitialized) {
                      console.log('User signed out after app initialization.');
                      cleanupRoomListeners();
                      showScreen(disconnectedScreen);
-                } else if (!window.showingRejoinPrompt) {
-                    // Only sign in if we are not waiting for rejoin prompt interaction
-                    console.log('No authenticated user found, not showing rejoin prompt, attempting sign-in...');
-                    auth.signInAnonymously()
-                        .catch(error => {
-                             console.error("Re-attempting anonymous sign-in failed:", error);
-                             showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null); 
-                             document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
-                        });
                 }
             }
         });
@@ -951,7 +930,6 @@
             database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
                 if (snapshot.exists() && snapshot.val() === true) {
                     // Kicked - clear stored ID and show kicked screen
-                    localStorage.removeItem('planningPokerLastRoomId');
                     showScreen(kickedOutScreen);
                 } else {
                     // Not kicked, check if room exists
@@ -967,7 +945,6 @@
                             showInPageAlert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.", 'error');
                             window.location.hash = ''; // Clear hash if it was invalid
                             currentRoomId = null; // Clear internal ID
-                            localStorage.removeItem('planningPokerLastRoomId');
                             joinRoomButton.disabled = true;
                         }
                     }).catch(error => {
@@ -976,7 +953,6 @@
                          showInPageAlert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut.", 'error');
                          window.location.hash = '';
                          currentRoomId = null;
-                         localStorage.removeItem('planningPokerLastRoomId');
                          joinRoomButton.disabled = true;
                     });
                 }
@@ -986,7 +962,6 @@
                   showInPageAlert("Konnte den Status nicht überprüfen. Bitte versuche es erneut.", 'error');
                    window.location.hash = '';
                    currentRoomId = null;
-                   localStorage.removeItem('planningPokerLastRoomId');
                    joinRoomButton.disabled = true;
                    // Make sure we don't proceed without a user ID if auth failed initially
                    if (!auth.currentUser) {
@@ -997,30 +972,54 @@
 
         // Renamed from initializeApp - contains logic dependent on auth being ready
         function setupApplicationLogic() {
-            // Ensure this runs only once per page load cycle after auth
             if (window.appLogicInitialized) return;
             window.appLogicInitialized = true;
-            console.log('setupApplicationLogic called with user ID:', currentUserId);
+            console.log('Setup application logic starting for user:', currentUserId);
 
             lucide.createIcons();
             let hash = window.location.hash.substring(1);
-            // Removed localStorage check here - handled earlier or via rejoin prompt
 
             if (hash) {
-                 console.log('Hash found, loading room:', hash);
-                 loadRoomForJoining(hash); // Use the extracted function
-            } 
-            // Note: If no hash, and we didn't show the rejoin prompt earlier,
-            // this implies we should show the create screen.
-            // However, the initial check before auth should handle the create case too.
-            // Consider adding a fallback here if needed, but likely covered by initial check.
-             else if (!window.showingRejoinPrompt) { 
-                 console.log('No hash, no rejoin prompt shown, showing create screen.');
-                 showScreen(createRoomScreen);
-             }
+                 console.log('Hash found, loading room directly:', hash);
+                 loadRoomForJoining(hash); 
+            } else {
+                // No hash, check DB for lastRoomId
+                console.log('No hash, checking DB for last room ID...');
+                const userProfileRef = database.ref(`/userProfiles/${currentUserId}/lastRoomId`);
+                userProfileRef.once('value')
+                    .then(snapshot => {
+                        const lastRoomId = snapshot.val();
+                        if (lastRoomId) {
+                            console.log('Found lastRoomId in DB:', lastRoomId);
+                            // Fetch room name for display
+                             database.ref(`rooms/${lastRoomId}/roomName`).once('value')
+                                .then(nameSnapshot => {
+                                    let displayName = lastRoomId; // Default to ID
+                                    if (nameSnapshot.exists() && nameSnapshot.val()) {
+                                        displayName = nameSnapshot.val();
+                                    }
+                                    lastRoomDisplay.textContent = displayName;
+                                    showScreen(rejoinOrCreateScreen);
+                                })
+                                .catch(nameError => {
+                                     console.error("Error fetching room name for rejoin prompt:", nameError);
+                                     lastRoomDisplay.textContent = lastRoomId; // Fallback to ID
+                                     showScreen(rejoinOrCreateScreen);
+                                });
+                        } else {
+                             console.log('No lastRoomId found in DB, showing create screen.');
+                             showScreen(createRoomScreen);
+                        }
+                    })
+                    .catch(error => {
+                         console.error("Error fetching user profile/lastRoomId:", error);
+                         // Fallback to create screen on error
+                         showScreen(createRoomScreen);
+                    });
+            }
 
-             // Revised hashchange listener
-             window.addEventListener('hashchange', () => {
+            // Revised hashchange listener
+            window.addEventListener('hashchange', () => {
                 const newHash = window.location.hash.substring(1);
                 console.log('Hash changed event. New hash:', newHash, 'Current Room ID was:', currentRoomId);
 
