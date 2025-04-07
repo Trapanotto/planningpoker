@@ -112,7 +112,7 @@
 <body class="bg-gray-100 min-h-screen flex justify-center items-start">
 
     <!-- In-Page Alert Container -->
-    <div id="alert-banner" class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-md shadow-md text-sm font-medium transition-all duration-300 ease-in-out max-w-md w-full text-center">
+    <div id="alert-banner" class="hidden fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 px-4 py-2 rounded-md shadow-md text-sm font-medium transition-all duration-300 ease-in-out max-w-md w-full text-center">
         <span id="alert-message"></span>
         <!-- Optional: Add a close button if needed -->
     </div>
@@ -247,7 +247,6 @@
         const enterNameScreen = document.getElementById('enter-name-screen');
         const pokerRoomScreen = document.getElementById('poker-room-screen');
         const kickedOutScreen = document.getElementById('kicked-out-screen');
-        const rejoinOrCreateScreen = document.getElementById('rejoin-or-create-screen');
         const disconnectedScreen = document.getElementById('disconnected-screen');
         const loadingScreen = document.getElementById('loading-screen'); // Add loading screen
 
@@ -255,10 +254,6 @@
         const createRoomButton = document.getElementById('create-room-button');
         const displayNameInput = document.getElementById('display-name-input');
         const joinRoomButton = document.getElementById('join-room-button');
-        const checkLastRoomButton = document.getElementById('check-last-room-button');
-        const rejoinLastRoomButton = document.getElementById('rejoin-last-room-button');
-        const forceCreateNewButton = document.getElementById('force-create-new-button');
-        const lastRoomDisplay = document.getElementById('last-room-display');
 
         const roomTitle = document.getElementById('room-title');
         const participantsList = document.getElementById('participants-list');
@@ -300,7 +295,6 @@
             enterNameScreen.classList.add('hidden');
             pokerRoomScreen.classList.add('hidden');
             kickedOutScreen.classList.add('hidden');
-            rejoinOrCreateScreen.classList.add('hidden');
             disconnectedScreen.classList.add('hidden');
             loadingScreen.classList.add('hidden');
             if (screenToShow !== loadingScreen) {
@@ -334,9 +328,8 @@
                     participants: {},
                     kickedUsers: {}
                 });
-                // Update URL hash and show name entry screen
-                window.location.hash = currentRoomId;
-                showScreen(enterNameScreen);
+                // Redirect to include query parameter
+                 window.location.href = `${window.location.pathname}?room=${currentRoomId}`; 
             } catch (error) {
                 console.error("Error creating room:", error);
                 showInPageAlert('Raum konnte nicht erstellt werden. Bitte versuche es erneut.', 'error'); // Use new alert
@@ -397,11 +390,6 @@
 
                 // Set up listener for kicked status
                 listenForKickedStatus();
-
-                // Store last room ID in Firebase user profile
-                database.ref(`/userProfiles/${currentUserId}/lastRoomId`).set(currentRoomId)
-                    .then(() => console.log('Stored lastRoomId in DB'))
-                    .catch(err => console.error('Error storing lastRoomId in DB:', err));
 
                 showScreen(pokerRoomScreen);
                 renderVotingCards();
@@ -827,12 +815,10 @@
 
         // Copy invite link to clipboard
         function copyInviteLink() {
-            const link = `${window.location.origin}${window.location.pathname}#${currentRoomId}`;
+            // Generate link with query parameter
+            const link = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}`;
             navigator.clipboard.writeText(link).then(() => {
-                copyLinkFeedback.classList.remove('hidden');
-                setTimeout(() => {
-                    copyLinkFeedback.classList.add('hidden');
-                }, 2000);
+                showInPageAlert('Einladungslink kopiert!', 'success', 2000); // Use success alert
             }).catch(err => {
                 console.error('Failed to copy link: ', err);
                 showInPageAlert('Link konnte nicht kopiert werden.', 'error'); // Use new alert
@@ -854,14 +840,17 @@
         function cleanupAndRedirect() {
             cleanupRoomListeners();
             // Clear last room ID from DB on explicit redirect/cleanup
+            /*
             if (currentUserId) {
                 database.ref(`/userProfiles/${currentUserId}/lastRoomId`).remove()
                     .catch(err => console.error('Error clearing lastRoomId from DB:', err));
             }
+            */
             currentRoomId = null; currentUsername = null;
-            document.title = 'Planning Poker'; // Reset document title
-            window.location.hash = '';
-            showScreen(createRoomScreen);
+            document.title = 'Planning Poker'; 
+            // Navigate to base path without query params or hash
+            window.location.href = window.location.pathname; 
+            // showScreen(createRoomScreen); // Let page reload handle showing create screen
         }
 
 
@@ -871,80 +860,6 @@
         revealButton.addEventListener('click', handleRevealVotes);
         resetButton.addEventListener('click', handleReset);
         copyLinkButton.addEventListener('click', copyInviteLink);
-        rejoinLastRoomButton.addEventListener('click', () => {
-            console.log('User chose to join last room.');
-            // Fetch the ID from the DB again to be sure?
-            // Or assume the one displayed is correct? Let's assume for now.
-            // Fetching again adds delay but is safer if DB could change.
-            // For simplicity, we'll assume the ID shown is the target.
-            database.ref(`/userProfiles/${currentUserId}/lastRoomId`).once('value')
-                .then(snapshot => {
-                     const roomToJoin = snapshot.val();
-                     if(roomToJoin) {
-                        loadRoomForJoining(roomToJoin);
-                     } else {
-                         showInPageAlert("Letzter Raum nicht mehr verfügbar.", "error");
-                         showScreen(createRoomScreen);
-                     }
-                })
-                 .catch(error => {
-                     console.error("Error fetching lastRoomId on rejoin button click:", error);
-                     showInPageAlert("Fehler beim Abrufen des letzten Raums.", "error");
-                 });
-        });
-        forceCreateNewButton.addEventListener('click', () => {
-            console.log('User chose to create a new room.');
-            if(currentUserId) { // Ensure we have a user ID
-                 database.ref(`/userProfiles/${currentUserId}/lastRoomId`).remove();
-            }
-            showScreen(createRoomScreen);
-        });
-
-        // Listener for the button on the Create screen to check for a previous room
-        checkLastRoomButton.addEventListener('click', () => {
-             console.log('Check last room button clicked.');
-             
-             // Explicitly check currentUserId at time of click
-             if (!currentUserId) {
-                 console.error('Check last room clicked, but currentUserId is null/undefined!');
-                 showInPageAlert("Authentifizierung wird initialisiert. Bitte kurz warten und erneut versuchen.", "error");
-                 return; // Prevent DB query without a user ID
-             }
-
-             console.log('Checking DB for last room ID for user:', currentUserId); // Log the ID being used
-
-             const userProfileRef = database.ref(`/userProfiles/${currentUserId}/lastRoomId`);
-             userProfileRef.once('value')
-                 .then(snapshot => {
-                     const lastRoomId = snapshot.val();
-                     if (lastRoomId) {
-                         console.log('Found lastRoomId in DB:', lastRoomId);
-                         // Fetch room name for display
-                          database.ref(`rooms/${lastRoomId}/roomName`).once('value')
-                             .then(nameSnapshot => {
-                                 let displayName = lastRoomId;
-                                 if (nameSnapshot.exists() && nameSnapshot.val()) {
-                                     displayName = nameSnapshot.val();
-                                 }
-                                 lastRoomDisplay.textContent = displayName;
-                                 showScreen(rejoinOrCreateScreen);
-                             })
-                             .catch(nameError => {
-                                  console.error("Error fetching room name for rejoin prompt:", nameError);
-                                  lastRoomDisplay.textContent = lastRoomId; // Fallback to ID
-                                  showScreen(rejoinOrCreateScreen);
-                             });
-                     } else {
-                          console.log('No lastRoomId found in DB.');
-                          showInPageAlert("Kein vorheriger Raum gefunden.", "info");
-                          checkLastRoomButton.classList.add('hidden'); // Hide button after checking
-                     }
-                 })
-                 .catch(error => {
-                      console.error("Error fetching user profile/lastRoomId:", error);
-                      showInPageAlert("Fehler beim Prüfen des letzten Raums.", "error");
-                 });
-        });
 
         // Add Enter key listener for room name input
         roomNameInput.addEventListener('keydown', (event) => {
@@ -1017,50 +932,18 @@
             }
 
             lucide.createIcons(); // Ensure icons available
-            let hash = window.location.hash.substring(1);
+            // Read query parameter instead of hash
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomIdFromParam = urlParams.get('room');
 
-            if (hash) {
-                 console.log('Auth ready, Hash found, loading room directly:', hash);
-                 loadRoomForJoining(hash);
+            if (roomIdFromParam) {
+                 console.log('Room ID found in query param, loading room directly:', roomIdFromParam);
+                 loadRoomForJoining(roomIdFromParam);
             } else {
-                // No hash, check DB for lastRoomId now that auth is ready
-                console.log('Auth ready, No hash, checking DB for last room ID for user:', currentUserId);
-                const userProfileRef = database.ref(`/userProfiles/${currentUserId}/lastRoomId`);
-                userProfileRef.once('value')
-                    .then(snapshot => {
-                        const lastRoomId = snapshot.val();
-                        if (lastRoomId) {
-                            console.log('Auth ready, Found lastRoomId in DB:', lastRoomId);
-                            // Fetch room name for display
-                             database.ref(`rooms/${lastRoomId}/roomName`).once('value')
-                                .then(nameSnapshot => {
-                                    let displayName = lastRoomId; 
-                                    if (nameSnapshot.exists() && nameSnapshot.val()) {
-                                        displayName = nameSnapshot.val();
-                                    }
-                                    lastRoomDisplay.textContent = displayName;
-                                    showScreen(rejoinOrCreateScreen); // Show prompt
-                                })
-                                .catch(nameError => {
-                                     console.error("Error fetching room name for rejoin prompt:", nameError);
-                                     lastRoomDisplay.textContent = lastRoomId; 
-                                     showScreen(rejoinOrCreateScreen); // Show prompt with ID
-                                });
-                        } else {
-                             console.log('Auth ready, No lastRoomId found in DB, showing create screen.');
-                             showScreen(createRoomScreen); // Show create screen
-                        }
-                    })
-                    .catch(error => {
-                         console.error("Error fetching user profile/lastRoomId:", error);
-                         showScreen(createRoomScreen); // Fallback to create screen
-                    });
+                 // No room param, show create screen
+                 console.log('No room query param, showing create screen.');
+                 showScreen(createRoomScreen);
             }
-            // Hash change listener should be added only once, maybe outside this function?
-            // Add it here for simplicity for now
-             window.addEventListener('hashchange', () => {
-                // ... (hashchange listener code remains the same)
-            });
         }
 
         // Function to handle loading room checks and showing enter name screen
@@ -1081,14 +964,15 @@
                     database.ref(`rooms/${currentRoomId}`).once('value', roomSnapshot => {
                         if (roomSnapshot.exists()) {
                             // Room exists, user not kicked - stay on enterNameScreen
-                            // Ensure the hash matches the loaded room if possible
-                             if (window.location.hash.substring(1) !== currentRoomId) {
-                                 window.location.hash = currentRoomId;
-                             }
+                            // Ensure the query param matches the loaded room using replaceState
+                            const urlParams = new URLSearchParams(window.location.search);
+                            if (urlParams.get('room') !== currentRoomId) {
+                                 history.replaceState(null, '', `${window.location.pathname}?room=${currentRoomId}`);
+                            }
                         } else {
                             // Room doesn't exist - show error, clear IDs, stay on screen, disable join
                             showInPageAlert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.", 'error');
-                            window.location.hash = ''; // Clear hash if it was invalid
+                            history.replaceState(null, '', window.location.pathname); // Clear query param
                             currentRoomId = null; // Clear internal ID
                             joinRoomButton.disabled = true;
                         }
@@ -1096,7 +980,7 @@
                          // Error checking room - show error, clear IDs, stay on screen, disable join
                          console.error("Error checking room existence:", error);
                          showInPageAlert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut.", 'error');
-                         window.location.hash = '';
+                         history.replaceState(null, '', window.location.pathname); // Clear query param
                          currentRoomId = null;
                          joinRoomButton.disabled = true;
                     });
@@ -1105,7 +989,7 @@
                   // Error checking kicked status - show error, clear IDs, stay on screen, disable join
                   console.error("Error checking kicked status:", error);
                   showInPageAlert("Konnte den Status nicht überprüfen. Bitte versuche es erneut.", 'error');
-                   window.location.hash = '';
+                   history.replaceState(null, '', window.location.pathname); // Clear query param
                    currentRoomId = null;
                    joinRoomButton.disabled = true;
                    // Make sure we don't proceed without a user ID if auth failed initially
