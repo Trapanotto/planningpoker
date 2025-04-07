@@ -882,75 +882,59 @@
         function initializeApp() {
             lucide.createIcons();
 
-            // --- Determine Action --- 
+            // --- Determine Room ID From URL ONLY --- 
             let initialRoomIdToLoad = null;
-            let action = 'create'; // Default action
+            let source = null;
             const urlParams = new URLSearchParams(window.location.search);
             const roomParam = urlParams.get('room');
             let hash = window.location.hash.substring(1);
-            const lastRoomId = localStorage.getItem('planningPokerLastRoomId'); 
-            let lastRoomName = localStorage.getItem('planningPokerLastRoomName');
-            // Load User ID early - needed regardless of action if stored
+            // Load userId - still needed for kick check if joining via URL
             currentUserId = localStorage.getItem('planningPokerUserId'); 
 
             if (roomParam) {
                 initialRoomIdToLoad = roomParam;
-                action = 'join_via_url';
+                source = 'URL Parameter';
                 if (hash) window.location.hash = ''; 
             } else if (hash) {
                 initialRoomIdToLoad = hash;
-                action = 'join_via_url';
-            } else if (lastRoomId) { // *** Only check for lastRoomId ***
-                // Found potential previous session ID
-                action = 'offer_rejoin'; 
-            } else {
-                 action = 'create'; 
-                 localStorage.removeItem('planningPokerLastRoomId');
-                 localStorage.removeItem('planningPokerLastRoomName');
+                source = 'URL Hash';
             }
+            // Removed all localStorage checks for lastRoomId here
 
-            console.log(`Initialize: Action='${action}', RoomId='${initialRoomIdToLoad || lastRoomId || 'N/A'}', UserId='${currentUserId}'`);
+            console.log(`Initialize: Source='${source || 'None'}', RoomId='${initialRoomIdToLoad}', UserId='${currentUserId}'`);
 
-            // --- Execute Action --- 
-            if (action === 'join_via_url') {
-                 currentRoomId = initialRoomIdToLoad; 
-                 showScreen(enterNameScreen); 
-                 performRoomChecks(currentRoomId, currentUserId);
-            } else if (action === 'offer_rejoin') {
-                // Try to show rejoin screen
-                currentRoomId = lastRoomId; // Tentatively set room ID for rejoin button
-                if (lastRoomName) {
-                     // We have the name, show the screen directly
-                     lastRoomNameDisplay.textContent = lastRoomName;
-                     showScreen(rejoinOrCreateScreen);
-                } else {
-                    // Name missing, try fetching it
-                    console.log('Last room name missing, fetching...');
-                    database.ref(`rooms/${lastRoomId}/roomName`).once('value')
-                        .then(nameSnapshot => {
-                            if (nameSnapshot.exists()) {
-                                lastRoomName = nameSnapshot.val();
-                                localStorage.setItem('planningPokerLastRoomName', lastRoomName); // Save if found
-                                lastRoomNameDisplay.textContent = lastRoomName;
-                                showScreen(rejoinOrCreateScreen);
-                            } else {
-                                // Room name (or room) doesn't exist anymore
-                                console.log('Could not fetch last room name, room might be deleted.');
-                                showInPageAlert('Letzte Sitzung konnte nicht gefunden werden.', 'error');
-                                localStorage.removeItem('planningPokerLastRoomId'); // Clean up bad ID
-                                showScreen(createRoomScreen);
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error fetching last room name:', error);
-                            showInPageAlert('Fehler beim Laden der letzten Sitzung.', 'error');
-                            localStorage.removeItem('planningPokerLastRoomId'); // Clean up bad ID
-                            showScreen(createRoomScreen);
-                        });
-                }
-            } else { // action === 'create'
+            // --- Load Room (if ID from URL) or Show Create --- 
+            if (initialRoomIdToLoad) {
+                currentRoomId = initialRoomIdToLoad; 
+                showScreen(enterNameScreen); // Show enter name for joining via URL
+                performRoomChecks(currentRoomId, currentUserId);
+            } else {
+                // No room identifier in URL -> show create screen & clear any storage
+                console.log('No room identifier in URL, showing create screen.');
+                localStorage.removeItem('planningPokerLastRoomId');
+                localStorage.removeItem('planningPokerLastRoomName');
+                // We keep planningPokerUserId for convenience, but clear room association
                 showScreen(createRoomScreen);
             }
+
+            // --- Event Listeners --- 
+             // Remove rejoin/create screen and its listeners as they are no longer used
+             // rejoinOrCreateScreen.remove(); 
+
+             createRoomButton.addEventListener('click', handleCreateRoom);
+// ... (Remove rejoinButton and goToCreateButton listeners) ...
+        
+            // popstate listener
+             window.addEventListener('popstate', (event) => {
+                 console.log('popstate detected - reloading');
+                 window.location.reload(); 
+             });
+
+             // hashchange listener
+             window.addEventListener('hashchange', () => {
+                console.log('Hash changed - reloading');
+                window.location.reload();
+             });
         }
 
         // Function to perform async room validation checks
