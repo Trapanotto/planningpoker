@@ -127,6 +127,18 @@
 
     </div>
 
+    <!-- Rejoin/Create Choice Screen -->
+    <div id="rejoin-or-create-screen" class="hidden bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center mt-4">
+        <h1 class="text-2xl font-bold mb-4 text-gray-700">Planning Poker</h1>
+        <p class="text-gray-600 mb-6">Du warst zuletzt im Raum: <strong id="last-room-id-display">...</strong></p>
+        <button id="rejoin-last-room-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md mb-3 transition duration-200">
+            Letzten Raum beitreten
+        </button>
+        <button id="force-create-new-button" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
+            Neuen Raum erstellen
+        </button>
+    </div>
+
     <div id="enter-name-screen" class="hidden bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center mt-4">
         <h1 class="text-2xl font-bold mb-4 text-gray-700">Raum beitreten</h1>
         <p class="text-gray-600 mb-3">Gib deinen Anzeigenamen für diese Sitzung ein:</p>
@@ -162,7 +174,7 @@
         </div>
 
         <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-2">
-             <button id="reveal-button" class="bg-blue-400 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-md transition duration-200 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed">
+             <button id="reveal-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-md transition duration-200 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed">
                 Aufdecken
             </button>
             <button id="reset-button" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-md transition duration-200 w-full sm:w-auto">
@@ -219,11 +231,15 @@
         const enterNameScreen = document.getElementById('enter-name-screen');
         const pokerRoomScreen = document.getElementById('poker-room-screen');
         const kickedOutScreen = document.getElementById('kicked-out-screen');
+        const rejoinOrCreateScreen = document.getElementById('rejoin-or-create-screen');
 
         const roomNameInput = document.getElementById('room-name-input');
         const createRoomButton = document.getElementById('create-room-button');
         const displayNameInput = document.getElementById('display-name-input');
         const joinRoomButton = document.getElementById('join-room-button');
+        const rejoinLastRoomButton = document.getElementById('rejoin-last-room-button');
+        const forceCreateNewButton = document.getElementById('force-create-new-button');
+        const lastRoomIdDisplay = document.getElementById('last-room-id-display');
 
         const roomTitle = document.getElementById('room-title');
         const participantsList = document.getElementById('participants-list');
@@ -265,6 +281,7 @@
             enterNameScreen.classList.add('hidden');
             pokerRoomScreen.classList.add('hidden');
             kickedOutScreen.classList.add('hidden');
+            rejoinOrCreateScreen.classList.add('hidden');
             screenToShow.classList.remove('hidden');
 
             // Autofocus the relevant input field
@@ -817,6 +834,16 @@
         revealButton.addEventListener('click', handleRevealVotes);
         resetButton.addEventListener('click', handleReset);
         copyLinkButton.addEventListener('click', copyInviteLink);
+        rejoinLastRoomButton.addEventListener('click', () => {
+            console.log('User chose to join last room.');
+            localStorage.setItem('planningPokerLastRoomId', localStorage.getItem('planningPokerLastRoomId'));
+            showScreen(enterNameScreen);
+        });
+        forceCreateNewButton.addEventListener('click', () => {
+            console.log('User chose to create a new room.');
+            localStorage.removeItem('planningPokerLastRoomId');
+            showScreen(createRoomScreen);
+        });
 
         // Add Enter key listener for room name input
         roomNameInput.addEventListener('keydown', (event) => {
@@ -841,14 +868,16 @@
             const lastRoomId = localStorage.getItem('planningPokerLastRoomId');
             currentUserId = localStorage.getItem('planningPokerUserId');
 
-            let initialRoomIdToLoad = null; // Determine the target room ID first
+            let initialRoomIdToLoad = null;
 
             if (hash) {
                 initialRoomIdToLoad = hash;
             } else if (lastRoomId && currentUserId) {
-                console.log('No hash, attempting to use last known room:', lastRoomId);
-                initialRoomIdToLoad = lastRoomId;
-                // Don't set window.location.hash here - handle internally
+                console.log('No hash, found last room ID:', lastRoomId);
+                // Don't load immediately, show the choice screen
+                lastRoomIdDisplay.textContent = lastRoomId; // Show the ID
+                showScreen(rejoinOrCreateScreen);
+                return; // Stop initialization here, wait for user choice
             }
 
             if (initialRoomIdToLoad) {
