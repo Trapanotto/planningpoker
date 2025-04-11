@@ -1,1026 +1,937 @@
 <!DOCTYPE html>
-<html lang="de"> <head>
+<html lang="de">
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Planning Poker</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
-        /* Custom styles (remain unchanged) */
+        /* Custom styles */
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
+            font-family: 'Inter', sans-serif; /* Using Inter font from Tailwind */
+            background-color: #f3f4f6; /* Light gray background */
         }
-        .card {
-            border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 1rem 1.5rem;
-            background-color: white; cursor: pointer; transition: all 0.2s ease-in-out;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            display: flex; justify-content: center; align-items: center;
-            width: 50px; 
-            height: 80px; font-size: 1.25rem; font-weight: 500;
-        }
-        .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        }
+        /* Style for selected card */
         .card.selected {
-            background-color: #3b82f6; color: white; border-color: #2563eb;
+            transform: translateY(-10px);
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.5), 0 4px 6px -2px rgba(59, 130, 246, 0.25);
+            border-color: #3b82f6; /* Blue border */
         }
-        .participant-container {
-            display: flex; flex-direction: column; align-items: center;
-            position: relative; min-width: 80px;
-        }
-        .participant-name {
-            font-size: 0.75rem; font-weight: 500; color: #374151; margin-bottom: 0.25rem;
-            text-align: center; width: 100%; white-space: nowrap;
-            overflow: hidden; text-overflow: ellipsis;
-        }
-        .participant-vote-card {
-            border: 1px solid #e5e7eb; border-radius: 0.375rem; background-color: #e5e7eb;
-            color: #4b5563; width: 50px; height: 80px; display: flex;
-            justify-content: center; align-items: center; font-size: 1.25rem; font-weight: 600;
-            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-        }
-        .participant-vote-card.voted {
-            background-color: #3b82f6;
-            color: white;
-            border-color: #2563eb;
-        }
-        .participant-vote-card.revealed {
-            background-color: #3b82f6; color: white; border-color: #2563eb;
-        }
-        /* Remove tooltip styles */
-        /*
+        /* Tooltip styles */
         .tooltip {
-            visibility: hidden; width: 100px; 
-            background-color: #1f2937; color: #fff; text-align: center;
-            border-radius: 6px; padding: 5px 0; position: absolute; z-index: 10;
-            bottom: calc(80px + 0.25rem + 1.2em); left: 50%; transform: translateX(-50%);
-            opacity: 0; transition: opacity 0.3s; pointer-events: none;
+            position: relative;
+            display: inline-block;
         }
-        .tooltip::after {
-            content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px;
-            border-width: 5px; border-style: solid; border-color: #1f2937 transparent transparent transparent;
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 120px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 0;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%; /* Position above the element */
+            left: 50%;
+            margin-left: -60px; /* Center the tooltip */
+            opacity: 0;
+            transition: opacity 0.3s;
         }
-        .participant-container:hover .tooltip {
-            visibility: visible; opacity: 1; pointer-events: auto;
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%; /* At the bottom of the tooltip */
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #555 transparent transparent transparent;
         }
-        .kick-button {
-            cursor: pointer; color: #ef4444; font-weight: bold;
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
         }
-         .kick-button:hover { color: #dc2626; }
-        */
-        .results-summary {
-            background-color: #e0f2fe; border: 1px solid #bae6fd; border-radius: 0.5rem;
-            padding: 1rem;
-            margin-top: 1.5rem; text-align: center;
+        /* Style for participant cards */
+        .participant-card {
+            min-width: 80px; /* Ensure minimum width */
+            transition: background-color 0.3s ease;
         }
-        .results-summary .average {
-            font-size: 2.5rem; font-weight: 700; color: #0284c7;
+        /* Hide scrollbar but allow scrolling */
+         .no-scrollbar::-webkit-scrollbar {
+            display: none; /* Safari and Chrome */
         }
-        .results-summary .vote-distribution div {
-            border: 1px solid #d1d5db; border-radius: 0.375rem; padding: 0.5rem;
-            background-color: white; margin: 0.25rem; min-width: 80px;
-        }
-        .results-summary .vote-distribution .vote-value {
-            font-size: 1.25rem; font-weight: 600;
-        }
-        .results-summary .vote-distribution .vote-count {
-            font-size: 0.875rem; color: #6b7280;
-        }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-        /* Alert Banner Styles */
-        .alert-error {
-            background-color: #fecaca; /* Light red */
-            color: #b91c1c; /* Dark red */
-        }
-        .alert-success {
-             background-color: #dcfce7; /* Light green */
-             color: #166534; /* Dark green */
-        }
-        .alert-info {
-             background-color: #dbeafe; /* Light blue */
-             color: #1e40af; /* Dark blue */
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex justify-center items-start">
+<body class="flex items-center justify-center min-h-screen bg-gray-100">
 
-    <!-- In-Page Alert Container -->
-    <div id="alert-banner" class="hidden fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 px-4 py-2 rounded-md shadow-md text-sm font-medium transition-all duration-300 ease-in-out max-w-md w-full text-center">
-        <span id="alert-message"></span>
-        <!-- Optional: Add a close button if needed -->
+    <div id="loading-indicator" class="text-center p-8">
+        <i class="fas fa-spinner fa-spin fa-3x text-blue-500"></i>
+        <p class="mt-4 text-gray-600">Sitzung wird geladen...</p>
     </div>
 
-    <div id="create-room-screen" class="hidden bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center mt-4">
-        <h1 class="text-2xl font-bold mb-4 text-gray-700">Planning Poker</h1>
-        <p class="text-gray-600 mb-3">Neue Sitzung erstellen</p>
-        <input type="text" id="room-name-input" placeholder="Raumname eingeben" class="w-full px-4 py-2 border rounded-md mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <button id="create-room-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
-            Raum erstellen
-        </button>
-        <!-- Add button to check for last room -->
-        <button id="check-last-room-button" class="hidden mt-4 text-sm text-blue-600 hover:underline">
-            Letzten Raum beitreten?
-        </button>
+    <div id="app-container" class="hidden w-full max-w-4xl p-4 md:p-8 bg-white rounded-lg shadow-xl">
 
-    </div>
+        <div id="create-room-screen" class="hidden text-center">
+            <h1 class="text-3xl font-bold mb-6 text-gray-800">Planning Poker</h1>
+            <p class="mb-4 text-gray-600">Neuen Sitzungsraum erstellen:</p>
+            <input type="text" id="room-name-input" placeholder="Raumnamen eingeben" class="w-full max-w-sm p-3 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button id="create-room-button" class="w-full max-w-sm bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-md transition duration-300">
+                Raum erstellen
+            </button>
+             <p class="mt-4 text-gray-500 text-sm">Oder einem Raum über einen Einladungslink beitreten.</p>
+        </div>
 
-    <!-- Rejoin/Create Choice Screen -->
-    <div id="rejoin-or-create-screen" class="hidden bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center mt-4">
-        <h1 class="text-2xl font-bold mb-4 text-gray-700">Planning Poker</h1>
-        <p class="text-gray-600 mb-6">Du warst zuletzt im Raum: <strong id="last-room-display">...</strong></p>
-        <button id="rejoin-last-room-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md mb-3 transition duration-200">
-            Letzten Raum beitreten
-        </button>
-        <button id="force-create-new-button" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
-            Neuen Raum erstellen
-        </button>
-    </div>
+        <div id="enter-name-screen" class="hidden text-center">
+            <h1 class="text-3xl font-bold mb-6 text-gray-800">Deinen Namen eingeben</h1>
+            <p class="mb-4 text-gray-600">Wähle einen Anzeigenamen für diese Sitzung:</p>
+            <input type="text" id="display-name-input" placeholder="Anzeigenamen eingeben" class="w-full max-w-sm p-3 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button id="join-room-button" class="w-full max-w-sm bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-md transition duration-300">
+                Raum beitreten
+            </button>
+        </div>
 
-    <div id="enter-name-screen" class="hidden bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center mt-4">
-        <h1 class="text-2xl font-bold mb-4 text-gray-700">Raum beitreten</h1>
-        <p class="text-gray-600 mb-3">Gib deinen Anzeigenamen für diese Sitzung ein:</p>
-        <input type="text" id="display-name-input" placeholder="Dein Name" class="w-full px-4 py-2 border rounded-md mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <button id="join-room-button" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
-            Sitzung beitreten
-        </button>
-    </div>
+        <div id="poker-room-screen" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h1 id="room-title" class="text-2xl font-bold text-gray-800">Raumname</h1>
+                 <div class="tooltip">
+                    <button id="copy-link-button" class="text-blue-500 hover:text-blue-700 transition duration-300">
+                        <i class="fas fa-link fa-lg"></i>
+                    </button>
+                     <span class="tooltiptext" id="copy-tooltip-text">Einladungslink kopieren</span>
+                 </div>
+            </div>
 
-    <div id="poker-room-screen" class="hidden w-full max-w-6xl mx-auto bg-white p-6 md:p-8 rounded-lg shadow-lg overflow-y-auto mt-4">
-        <div class="flex justify-between items-center mb-2">
-            <h1 class="text-2xl md:text-2xl font-bold text-gray-800" id="room-title">Planning Poker</h1>
-            <div class="flex items-center space-x-2">
-                 <span class="text-sm text-gray-500">Einladungslink:</span>
-                 <button id="copy-link-button" title="Einladungslink kopieren" class="p-2 rounded-md hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition duration-150">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                 </button>
-                 <span id="copy-link-feedback" class="text-sm text-green-600 hidden">Kopiert!</span>
+            <div class="mb-6 overflow-x-auto no-scrollbar">
+                <h2 class="text-lg font-semibold mb-2 text-gray-700">Teilnehmer:</h2>
+                <div id="participants-list" class="flex space-x-3 pb-2">
+                    </div>
+            </div>
+
+             <div id="results-area" class="hidden mb-6 p-4 bg-gray-100 rounded-lg">
+                 <div id="results-summary" class="text-center text-gray-800">
+                     </div>
+            </div>
+
+            <!-- Centering container for the reset button -->
+            <div id="reset-button-container" class="hidden text-center mt-6">
+                <button id="reset-button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-md transition duration-300 inline-flex items-center justify-center space-x-2">
+                     <i class="fas fa-sync-alt"></i>
+                    <span>Zurücksetzen</span>
+                </button>
+            </div>
+
+            <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-3 text-gray-700">Gib deine Stimme ab:</h2>
+                <div id="voting-cards" class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-3">
+                    </div>
+            </div>
+
+            <!-- Container for reveal button -->
+            <div class="text-center">
+                <button id="reveal-button" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-6 rounded-md transition duration-300 flex items-center justify-center space-x-2 mx-auto">
+                    <i class="fas fa-eye"></i>
+                    <span>Stimmen aufdecken</span>
+                    <span id="countdown-timer" class="hidden ml-2 font-mono"></span>
+                </button>
             </div>
         </div>
 
-        <div class="mb-2">
-            <h2 class="text-lg font-semibold mb-3 text-gray-700">Teilnehmer:</h2>
-            <div id="participants-list" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-x-2 gap-y-6">
-                </div>
-        </div>
-
-        <div id="results-summary-section" class="results-summary hidden mb-4">
-          
-            <div id="average-vote" class="average mb-4"></div>
-            <div id="vote-distribution" class="flex flex-wrap justify-center items-center">
-                </div>
-        </div>
-
-        <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-2">
-             <button id="reveal-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-md transition duration-200 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed">
-                Aufdecken
-            </button>
-            <button id="reset-button" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-md transition duration-200 w-full sm:w-auto">
-                Zurücksetzen
+         <div id="kicked-screen" class="hidden text-center">
+            <h1 class="text-3xl font-bold mb-6 text-red-600">Zugriff verweigert</h1>
+            <p class="text-xl text-gray-700">Du wurdest aus dem Raum geworfen.</p>
+             <i class="fas fa-ban fa-4x text-red-500 my-6"></i>
+             <button onclick="window.location.hash=''; window.location.reload();" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                Zur Startseite
             </button>
         </div>
 
-        <div>
-            <h2 class="text-lg font-semibold mb-3 text-gray-700">Deine Schätzung:</h2>
-            <div id="voting-cards" class="flex flex-wrap justify-center gap-3 md:gap-4">
-                </div>
-        </div>
-
-    </div>
-
-     <div id="kicked-out-screen" class="hidden bg-white p-8 rounded-lg shadow-md w-full max-w-md text-center max-h-[30vh] mt-4">
-        <h1 class="text-2xl font-bold mb-6 text-red-600">Du wurdest entfernt</h1>
-        <p class="text-gray-600 mb-4">Du wurdest aus der Sitzung entfernt.</p>
-        <button onclick="window.location.href = window.location.pathname;" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-200">
-            Zur Startseite
-        </button>
-    </div>
-
-    <!-- Disconnected Screen -->
-    <div id="disconnected-screen" class="hidden bg-white p-8 rounded-lg shadow-md w-full max-w-md text-center max-h-[30vh] mt-4">
-        <h1 class="text-2xl font-bold mb-6 text-orange-600">Verbindung verloren</h1>
-        <p class="text-gray-600 mb-4">Deine Verbindung wurde unterbrochen oder du wurdest ausgeloggt.</p>
-
-    </div>
-
-    <div id="loading-screen" class="hidden bg-white p-8 rounded-lg shadow-md w-full max-w-md text-center max-h-[30vh] mt-4">
-        <h1 class="text-2xl font-bold mb-6 text-gray-700">Laden...</h1>
-        <p class="text-gray-600 mb-4">Bitte warten Sie, während die Seite geladen wird.</p>
     </div>
 
     <script type="module">
-        // Firebase Configuration (REPLACE with your actual config)
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import {
+            getAuth,
+            signInAnonymously,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import {
+            getDatabase,
+            ref,
+            set,
+            get,
+            onValue,
+            onDisconnect,
+            serverTimestamp,
+            push, // Use push to generate unique room IDs
+            remove, // To remove users or votes
+            runTransaction, // For atomic operations like reveal countdown
+            update // <-- Add update here
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+        // Your web app's Firebase configuration
         const firebaseConfig = {
-            apiKey: "AIzaSyABZ2rEEwDsGUNQ475Iq_RzfqYlMqUEW-M",
+            apiKey: "AIzaSyABZ2rEEwDsGUNQ475Iq_RzfqYlMqUEW-M", // Replace with your actual API key if needed
             authDomain: "planningpoker-115b0.firebaseapp.com",
             databaseURL: "https://planningpoker-115b0-default-rtdb.europe-west1.firebasedatabase.app",
             projectId: "planningpoker-115b0",
-            storageBucket: "planningpoker-115b0.appspot.com", // Corrected storage bucket
+            storageBucket: "planningpoker-115b0.appspot.com", // Corrected storage bucket name
             messagingSenderId: "883176222007",
             appId: "1:883176222007:web:b18ea07bdf0733bd557eb2"
         };
 
         // Initialize Firebase
-        const app = firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
-        const auth = firebase.auth(); // Get Auth instance
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
 
-        // --- Global Variables ---
+        // --- Global State ---
         let currentRoomId = null;
-        let currentUserId = null; // Will be set after auth
-        let currentUsername = null;
+        let currentUserId = localStorage.getItem('planning_poker_userId'); // Persist userId
+        let currentDisplayName = null;
         let roomRef = null;
         let participantsRef = null;
-        let kickedUsersRef = null;
         let userRef = null;
-        let countdownInterval = null; // For reveal countdown
-        const VOTE_VALUES = ['0', '0.5', '1', '2', '3', '5', '8', '?', '☕'];
+        let kickedUsersRef = null;
+        let roomListener = null; // To detach listener later
+        let kickedListener = null; // To detach listener later
+        let countdownInterval = null; // Interval ID for countdown timer
 
-        // --- DOM Elements ---
+        // --- UI Elements ---
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const appContainer = document.getElementById('app-container');
         const createRoomScreen = document.getElementById('create-room-screen');
         const enterNameScreen = document.getElementById('enter-name-screen');
         const pokerRoomScreen = document.getElementById('poker-room-screen');
-        const kickedOutScreen = document.getElementById('kicked-out-screen');
-        const disconnectedScreen = document.getElementById('disconnected-screen');
-        const loadingScreen = document.getElementById('loading-screen'); // Add loading screen
+        const kickedScreen = document.getElementById('kicked-screen');
 
         const roomNameInput = document.getElementById('room-name-input');
         const createRoomButton = document.getElementById('create-room-button');
         const displayNameInput = document.getElementById('display-name-input');
         const joinRoomButton = document.getElementById('join-room-button');
-
         const roomTitle = document.getElementById('room-title');
         const participantsList = document.getElementById('participants-list');
         const votingCardsContainer = document.getElementById('voting-cards');
         const revealButton = document.getElementById('reveal-button');
         const resetButton = document.getElementById('reset-button');
         const copyLinkButton = document.getElementById('copy-link-button');
-        const copyLinkFeedback = document.getElementById('copy-link-feedback');
-        const resultsSummarySection = document.getElementById('results-summary-section');
-        const averageVoteDisplay = document.getElementById('average-vote');
-        const voteDistributionDisplay = document.getElementById('vote-distribution');
-        const alertBanner = document.getElementById('alert-banner');
-        const alertMessage = document.getElementById('alert-message');
+        const copyTooltipText = document.getElementById('copy-tooltip-text');
+        const resultsArea = document.getElementById('results-area');
+        const resultsSummary = document.getElementById('results-summary');
+        const countdownTimer = document.getElementById('countdown-timer');
+        const resetButtonContainer = document.getElementById('reset-button-container');
 
-        // --- Functions ---
+        const votingCardValues = ['0', '0.5', '1', '2', '3', '5', '8', '?', '☕'];
 
-        // In-Page Alert Function
-        let alertTimeout = null;
-        function showInPageAlert(message, type = 'info', duration = 3000) {
-            clearTimeout(alertTimeout); // Clear previous timeout if any
-            alertMessage.textContent = message;
-            alertBanner.className = alertBanner.className.replace(/alert-\w+/g, ''); // Remove previous type classes
-            alertBanner.classList.add(`alert-${type}`); // Add new type class
-            alertBanner.classList.remove('hidden');
-            alertBanner.style.opacity = '1'; // Ensure visible
+        // --- Firebase Refs ---
+        const roomsRef = ref(db, 'rooms');
 
-            if (duration) {
-                 alertTimeout = setTimeout(() => {
-                    alertBanner.style.opacity = '0';
-                    // Wait for transition before hiding completely
-                    setTimeout(() => alertBanner.classList.add('hidden'), 300);
-                 }, duration);
+        // --- Authentication ---
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log("User signed in anonymously:", user.uid);
+                if (!currentUserId || currentUserId !== user.uid) {
+                    currentUserId = user.uid;
+                    localStorage.setItem('planning_poker_userId', currentUserId);
+                }
+                // Process URL immediately once auth is ready
+                handleUrlChange();
+            } else {
+                console.log("No user signed in, signing in anonymously...");
+                // Show loader while signing in
+                loadingIndicator.classList.remove('hidden');
+                appContainer.classList.add('hidden');
+                signInAnonymously(auth).catch((error) => {
+                    console.error("Anonymous sign-in failed:", error);
+                    loadingIndicator.innerHTML = '<p class="text-red-600">Verbindung fehlgeschlagen. Bitte aktualisieren.</p>';
+                    alert("Verbindung zur Sitzung fehlgeschlagen. Bitte prüfe deine Verbindung und versuche es erneut.");
+                });
             }
-        }
+        });
 
-        // Show specific screen, hide others
-        function showScreen(screenToShow) {
+        // --- Routing / Screen Management ---
+        function showScreen(screenId) {
+            // Hide loader and show app container first
+            loadingIndicator.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+
+            // Hide all specific screens within the app container
             createRoomScreen.classList.add('hidden');
             enterNameScreen.classList.add('hidden');
             pokerRoomScreen.classList.add('hidden');
-            kickedOutScreen.classList.add('hidden');
-            disconnectedScreen.classList.add('hidden');
-            loadingScreen.classList.add('hidden');
-            if (screenToShow !== loadingScreen) {
-                 loadingScreen.classList.add('hidden');
-            }
-            screenToShow.classList.remove('hidden');
+            kickedScreen.classList.add('hidden');
 
-            // Autofocus the relevant input field
-            if (screenToShow === createRoomScreen) {
-                roomNameInput.focus();
-            } else if (screenToShow === enterNameScreen) {
-                displayNameInput.focus();
+            const screenToShow = document.getElementById(screenId);
+            if (screenToShow) {
+                screenToShow.classList.remove('hidden');
+            } else {
+                console.error("Screen not found:", screenId);
+                // Fallback to create screen if something goes wrong
+                createRoomScreen.classList.remove('hidden');
             }
         }
 
-        // Handle Room Creation
-        async function handleCreateRoom() {
+        // --- URL Handling ---
+        async function handleUrlChange() {
+            if (!auth.currentUser) {
+                console.log("Auth not ready yet, waiting...");
+                // Keep loader visible
+                loadingIndicator.classList.remove('hidden');
+                appContainer.classList.add('hidden');
+                return;
+            }
+
+            const hash = window.location.hash;
+            const params = new URLSearchParams(hash.substring(1));
+            const roomIdFromUrl = params.get('room');
+            const kickedParam = params.get('kicked');
+
+            // Immediately handle kicked screen if param is present
+            if (kickedParam === 'true') {
+                showScreen('kicked-screen');
+                return;
+            }
+
+            if (roomIdFromUrl) {
+                currentRoomId = roomIdFromUrl;
+                roomRef = ref(db, `rooms/${currentRoomId}`);
+                participantsRef = ref(db, `rooms/${currentRoomId}/participants`);
+                kickedUsersRef = ref(db, `rooms/${currentRoomId}/kickedUsers/${currentUserId}`);
+
+                try {
+                    const roomSnapshot = await get(roomRef);
+
+                    if (roomSnapshot.exists()) {
+                        const kickedSnapshot = await get(kickedUsersRef);
+                        if (kickedSnapshot.exists()) {
+                            console.log("User is kicked from this room.");
+                            window.location.hash = `kicked=true`; // Navigate to kicked screen via hash
+                            // showScreen('kicked-screen') will be called by the hashchange listener
+                        } else {
+                            userRef = ref(db, `rooms/${currentRoomId}/participants/${currentUserId}`);
+                            const userSnapshot = await get(userRef);
+                            if (userSnapshot.exists() && userSnapshot.val().name) {
+                                currentDisplayName = userSnapshot.val().name;
+                                console.log(`Rejoining room ${currentRoomId} as ${currentDisplayName}`);
+                                setupRoomListeners();
+                                updateOnlineStatus(true);
+                                showScreen('poker-room-screen');
+                            } else {
+                                console.log(`Joining room ${currentRoomId}, need display name.`);
+                                showScreen('enter-name-screen');
+                            }
+                        }
+                    } else {
+                        console.error("Room not found:", currentRoomId);
+                        alert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.");
+                        window.location.hash = '';
+                        showScreen('create-room-screen'); // Show create screen if room is invalid
+                    }
+                } catch (error) {
+                    console.error("Error accessing room data:", error);
+                    alert("Verbindung zum Raum fehlgeschlagen. Bitte versuche es erneut.");
+                    window.location.hash = '';
+                    showScreen('create-room-screen'); // Fallback to create screen on error
+                }
+            } else {
+                // No room in URL, show create screen
+                console.log("No room in URL hash, showing create screen.");
+                showScreen('create-room-screen');
+            }
+        }
+
+        // Listen for hash changes (e.g., back button, manual URL change)
+        window.addEventListener('hashchange', handleUrlChange);
+
+        // --- Room Creation ---
+        createRoomButton.addEventListener('click', () => {
             const roomName = roomNameInput.value.trim();
             if (!roomName) {
-                showInPageAlert('Bitte gib einen Raumnamen ein.', 'error'); // Use new alert
+                alert("Bitte gib einen Raumnamen ein.");
                 return;
             }
 
-            try {
-                const newRoomRef = database.ref('rooms').push();
-                currentRoomId = newRoomRef.key;
-                await newRoomRef.set({
-                    roomName: roomName,
-                    revealed: false,
-                    revealCountdownEnd: null,
-                    participants: {},
-                    kickedUsers: {}
-                });
-                // Redirect to include query parameter
-                 window.location.href = `${window.location.pathname}?room=${currentRoomId}`; 
-            } catch (error) {
-                console.error("Error creating room:", error);
-                showInPageAlert('Raum konnte nicht erstellt werden. Bitte versuche es erneut.', 'error'); // Use new alert
+            if (!auth.currentUser) {
+                alert("Authentifizierung noch nicht bereit. Bitte warte einen Moment und versuche es erneut.");
+                return;
             }
-        }
 
-        // Handle Joining Room (after name entry)
-        async function handleJoinRoom() {
+            // Generate a unique ID for the room
+            const newRoomRef = push(roomsRef);
+            currentRoomId = newRoomRef.key;
+
+            const roomData = {
+                name: roomName,
+                revealed: false,
+                revealTimestamp: null,
+                participants: {}, // Initialize participants
+                kickedUsers: {} // Initialize kicked users
+            };
+
+            set(newRoomRef, roomData)
+                .then(() => {
+                    console.log("Room created successfully:", currentRoomId);
+                    // Navigate to enter name screen for this new room
+                    window.location.hash = `room=${currentRoomId}`;
+                    // handleUrlChange will be triggered by hash change
+                })
+                .catch((error) => {
+                    console.error("Error creating room:", error);
+                    alert("Raumerstellung fehlgeschlagen. Bitte versuche es erneut.");
+                });
+        });
+
+        // --- Joining Room / Setting Name ---
+        joinRoomButton.addEventListener('click', () => {
             const displayName = displayNameInput.value.trim();
             if (!displayName) {
-                showInPageAlert('Bitte gib deinen Anzeigenamen ein.', 'error'); // Use new alert
+                alert("Bitte gib einen Anzeigenamen ein.");
                 return;
             }
-            if (!currentRoomId) {
-                showInPageAlert('Ungültige Raum-ID.', 'error'); // Use new alert
-                showScreen(createRoomScreen); // Go back to start
-                window.location.hash = '';
-                return;
-            }
-
-            currentUsername = displayName;
-
-            // Generate or retrieve user ID from localStorage
-            // Remove this block - will use auth uid
-            /*
-            if (!currentUserId) {
-                currentUserId = generateUserId();
-                localStorage.setItem('planningPokerUserId', currentUserId); // Use localStorage
-            }
-            */
-            currentUserId = auth.currentUser.uid; // Use the authenticated user's ID
-
-            try {
-                // Check if user was previously kicked
-                const kickedSnapshot = await database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value');
-                if (kickedSnapshot.exists() && kickedSnapshot.val() === true) {
-                    showScreen(kickedOutScreen);
-                    return; // Stop joining process
-                }
-
-                roomRef = database.ref(`rooms/${currentRoomId}`);
-                participantsRef = database.ref(`rooms/${currentRoomId}/participants`);
-                kickedUsersRef = database.ref(`rooms/${currentRoomId}/kickedUsers`);
-                userRef = database.ref(`rooms/${currentRoomId}/participants/${currentUserId}`);
-
-                // Add user to participants
-                await userRef.set({
-                    name: currentUsername,
-                    vote: null,
-                    hasVoted: false
-                });
-
-                // Set up listener to remove user on disconnect
-                await userRef.onDisconnect().remove();
-
-                // Set up listener for room changes
-                listenToRoomChanges();
-
-                // Set up listener for kicked status
-                listenForKickedStatus();
-
-                showScreen(pokerRoomScreen);
-                renderVotingCards();
-                // Initialize Lucide icons after showing the screen
-                lucide.createIcons();
-
-            } catch (error) {
-                console.error("Error joining room:", error);
-                showInPageAlert('Beitritt zum Raum fehlgeschlagen. Der Raum existiert möglicherweise nicht oder es gab ein Verbindungsproblem.', 'error'); // Use new alert
-                window.location.hash = ''; // Clear invalid hash
-                showScreen(createRoomScreen);
-            }
-        }
-
-        // Listen for changes in the room data
-        function listenToRoomChanges() {
-            if (!roomRef) return;
-
-            roomRef.on('value', (snapshot) => {
-                if (!snapshot.exists()) {
-                    // Room deleted or doesn't exist
-                    showInPageAlert('Dieser Raum existiert nicht mehr.', 'error', 5000); // Longer duration
-                    cleanupAndRedirect();
-                    return;
-                }
-
-                const roomData = snapshot.val();
-
-                // Check if current user is still in participants (might have been kicked)
-                if (!roomData.participants || !roomData.participants[currentUserId]) {
-                    const kicked = roomData.kickedUsers && roomData.kickedUsers[currentUserId];
-                     if (!kicked) {
-                        console.log("User not found in participants, redirecting.");
-                        if (!kickedOutScreen.classList.contains('hidden')) return;
-                        cleanupAndRedirect();
-                     }
-                    return; // Kicked status handled by listenForKickedStatus
-                }
-
-                // Update room title H1
-                roomTitle.textContent = roomData.roomName || 'Planning Poker';
-                
-                // Update document title if in the poker room
-                if (!pokerRoomScreen.classList.contains('hidden')) {
-                     document.title = (roomData.roomName ? `${roomData.roomName} - ` : '') + 'Planning Poker';
-                }
-
-                renderParticipants(roomData.participants || {}, roomData.revealed || false);
-                updateVotingCardsSelection(roomData.participants[currentUserId]?.vote);
-                updateActionButtons(roomData.participants || {}, roomData.revealed || false, roomData.revealCountdownEnd);
-                renderResults(roomData.participants || {}, roomData.revealed || false);
-                handleCountdown(roomData.revealCountdownEnd);
-                lucide.createIcons();
-
-            }, (error) => {
-                console.error("Error listening to room changes:", error);
-                showInPageAlert("Verbindungsfehler. Bitte aktualisiere die Seite.", 'error', 5000); // Longer duration
-                cleanupAndRedirect();
-            });
-        }
-
-         // Listen specifically for changes to the kicked status of the current user
-        function listenForKickedStatus() {
-            if (!kickedUsersRef || !currentUserId) return;
-
-            const userKickedRef = database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`);
-            userKickedRef.on('value', (snapshot) => {
-                if (snapshot.exists() && snapshot.val() === true) {
-                    console.log("Kicked status detected.");
-                    showScreen(kickedOutScreen);
-                    cleanupRoomListeners();
-                }
-            }, (error) => {
-                console.error("Error listening for kicked status:", error);
-            });
-        }
-
-
-        // Render the list of participants with name above the card
-        function renderParticipants(participants, revealed) {
-            participantsList.innerHTML = ''; // Clear existing list
-            Object.entries(participants).forEach(([id, participant]) => {
-                const container = document.createElement('div');
-                container.className = 'participant-container group relative';
-                container.dataset.userId = id;
-
-                const nameEl = document.createElement('div');
-                nameEl.className = 'participant-name';
-                nameEl.textContent = participant.name;
-                nameEl.title = participant.name;
-
-                const voteCard = document.createElement('div');
-                voteCard.className = 'participant-vote-card';
-
-                if (revealed) {
-                    // If revealed, show vote or '-' if no vote was cast
-                    if (participant.vote != null) {
-                        voteCard.textContent = participant.vote;
-                        voteCard.classList.add('revealed'); // Apply blue style only if voted
-                    } else {
-                        voteCard.textContent = '-';
-                        voteCard.classList.remove('revealed', 'voted'); // Ensure default grey style
-                    }
-                } else {
-                    if (participant.hasVoted) {
-                        voteCard.innerHTML = '<i data-lucide="check" class="w-6 h-6"></i>'; // Use icon
-                        voteCard.classList.add('voted'); // Add blue background class
-                        // voteCard.textContent = '✓'; // Remove text checkmark
-                    } else {
-                        voteCard.textContent = '?'; // Show question mark
-                        voteCard.classList.remove('voted'); // Ensure not blue if vote removed
-                    }
-                    // Ensure revealed styles are not applied before reveal
-                    voteCard.classList.remove('revealed');
-                }
-
-                container.appendChild(nameEl);
-                container.appendChild(voteCard);
-
-                if (id !== currentUserId) {
-                    const removeButton = document.createElement('button');
-                    removeButton.className = `
-                        absolute -top-1.5 -right-1.5 /* Adjusted position */ 
-                        bg-white rounded-full p-0.5 /* Smaller padding */ 
-                        shadow border border-gray-200 
-                        text-red-500 hover:text-red-700 hover:bg-red-50
-                        opacity-0 group-hover:opacity-100 
-                        transition-opacity duration-200 ease-in-out
-                        focus:outline-none focus:ring-1 focus:ring-red-300 /* Smaller ring */
-                    `; // Tailwind classes for styling and positioning
-                    removeButton.title = 'Benutzer entfernen'; // GERMAN
-                    removeButton.innerHTML = '<i data-lucide="trash-2" class="w-3.5 h-3.5"></i>'; /* Smaller icon */
-                    removeButton.onclick = (e) => {
-                        e.stopPropagation(); // Prevent clicks on elements underneath
-                        handleKickUser(id);
-                    };
-                    container.appendChild(removeButton);
-                }
-
-                participantsList.appendChild(container);
-            });
-             // Ensure icons render after updates
-             lucide.createIcons();
-        }
-
-        // Render the voting cards
-        function renderVotingCards() {
-            votingCardsContainer.innerHTML = '';
-            VOTE_VALUES.forEach(value => {
-                const card = document.createElement('div');
-                card.className = 'card';
-                card.dataset.value = value;
-                card.textContent = value === '☕' ? '☕' : value;
-                card.onclick = () => handleVote(value);
-                votingCardsContainer.appendChild(card);
-            });
-        }
-
-        // Handle user voting
-        async function handleVote(value) {
-            if (!userRef) return;
-            try {
-                const currentVoteSnapshot = await userRef.child('vote').once('value');
-                const currentVote = currentVoteSnapshot.val();
-                if (currentVote === value) {
-                    await userRef.update({ vote: null, hasVoted: false });
-                } else {
-                    await userRef.update({ vote: value, hasVoted: true });
-                }
-            } catch (error) {
-                console.error("Error casting vote:", error);
-                showInPageAlert('Stimme konnte nicht abgegeben werden.', 'error'); // Use new alert
-            }
-        }
-
-        // Update visual selection of voting cards
-        function updateVotingCardsSelection(selectedVote) {
-            const cards = votingCardsContainer.querySelectorAll('.card');
-            cards.forEach(card => {
-                if (card.dataset.value === selectedVote) {
-                    card.classList.add('selected');
-                } else {
-                    card.classList.remove('selected');
-                }
-            });
-        }
-
-        // Handle Reveal Votes button click
-        async function handleRevealVotes() {
-            if (!roomRef) return;
-            revealButton.disabled = true;
-            try {
-                const countdownEndTime = Date.now() + 3000;
-                await roomRef.update({ revealCountdownEnd: countdownEndTime });
-            } catch (error) {
-                console.error("Error initiating reveal:", error);
-                showInPageAlert('Starten des Aufdeckens fehlgeschlagen.', 'error'); // Use new alert
-                revealButton.disabled = false;
-            }
-        }
-
-        // Handle countdown logic
-        function handleCountdown(countdownEndTime) {
-            clearInterval(countdownInterval);
-            if (countdownEndTime && countdownEndTime > Date.now()) {
-                revealButton.disabled = true;
-                const updateTimer = () => {
-                    const remaining = Math.max(0, countdownEndTime - Date.now());
-                    const seconds = Math.ceil(remaining / 1000);
-                    revealButton.textContent = `Wird aufgedeckt in ${seconds}...`; // GERMAN
-                    if (remaining === 0) {
-                        clearInterval(countdownInterval);
-                         if(roomRef) {
-                             roomRef.update({ revealed: true, revealCountdownEnd: null })
-                                .catch(err => console.error("Error setting revealed=true:", err));
-                         }
-                    }
-                };
-                countdownInterval = setInterval(updateTimer, 500);
-                updateTimer();
-            } else {
-                if (countdownEndTime && countdownEndTime <= Date.now()) {
-                     if(roomRef) {
-                         roomRef.child('revealed').once('value', snap => {
-                            if (!snap.val()) {
-                                roomRef.update({ revealed: true, revealCountdownEnd: null })
-                                    .catch(err => console.error("Error setting revealed=true post-countdown:", err));
-                            } else if (snap.val() && roomRef.child('revealCountdownEnd').exists()) {
-                                roomRef.child('revealCountdownEnd').remove();
-                            }
-                         });
-                     }
-                }
-                 roomRef.child('revealed').once('value', snapshot => {
-                    const isRevealed = snapshot.val();
-                    if (!isRevealed) {
-                        revealButton.textContent = 'Aufdecken'; // GERMAN
-                        revealButton.disabled = false;
-                    } else {
-                        revealButton.textContent = 'Stimmen aufgedeckt'; // GERMAN
-                        revealButton.disabled = true;
-                    }
-                 });
-            }
-        }
-
-
-        // Handle Reset button click
-        async function handleReset() {
-            if (!participantsRef || !roomRef) return;
-            clearInterval(countdownInterval);
-            try {
-                const updates = {};
-                updates['/revealed'] = false;
-                updates['/revealCountdownEnd'] = null;
-                const snapshot = await participantsRef.once('value');
-                const participants = snapshot.val() || {};
-                Object.keys(participants).forEach(id => {
-                    updates[`/participants/${id}/vote`] = null;
-                    updates[`/participants/${id}/hasVoted`] = false;
-                });
-                await roomRef.update(updates);
-                resultsSummarySection.classList.add('hidden');
-            } catch (error) {
-                console.error("Error resetting votes:", error);
-                showInPageAlert('Zurücksetzen der Stimmen fehlgeschlagen.', 'error'); // Use new alert
-            }
-        }
-
-         // Handle Kick User button click
-        async function handleKickUser(userIdToKick) {
-            if (!kickedUsersRef || !userIdToKick || userIdToKick === currentUserId) return;
-            try {
-                await database.ref(`rooms/${currentRoomId}/kickedUsers/${userIdToKick}`).set(true);
-                await database.ref(`rooms/${currentRoomId}/participants/${userIdToKick}`).remove();
-                console.log(`User ${userIdToKick} kicked.`);
-            } catch (error) {
-                console.error("Error kicking user:", error);
-                showInPageAlert('Benutzer konnte nicht entfernt werden.', 'error'); // Use new alert (updated text)
-            }
-        }
-
-
-        // Update state of Reveal and Reset buttons
-        function updateActionButtons(participants, revealed, countdownEndTime) {
-             const hasParticipants = Object.keys(participants).length > 0;
-
-             if (revealed) {
-                 // Votes are revealed: Hide Reveal, Show Reset
-                 revealButton.classList.add('hidden');
-                 resetButton.classList.remove('hidden');
-                 resetButton.disabled = false; // Enable reset button
-             } else {
-                 // Votes are not revealed: Show Reveal, Hide Reset
-                 revealButton.classList.remove('hidden');
-                 resetButton.classList.add('hidden');
-
-                 // Handle reveal button state (disabled during countdown or if no participants)
-                 if (countdownEndTime && countdownEndTime > Date.now()) {
-                     revealButton.disabled = true;
-                 } else {
-                     revealButton.textContent = 'Stimmen aufdecken'; // GERMAN
-                     revealButton.disabled = !hasParticipants;
-                 }
-             }
-
-             // Disable buttons during countdown regardless of revealed state
-             if (countdownEndTime && countdownEndTime > Date.now()) {
-                resetButton.disabled = true; // Also disable reset during countdown
-             }
-        }
-
-        // Render the results summary (average, distribution)
-        function renderResults(participants, revealed) {
-            if (!revealed) {
-                resultsSummarySection.classList.add('hidden');
-                return;
-            }
-
-            // Always show the results section if revealed is true
-            resultsSummarySection.classList.remove('hidden');
-
-            // Get all votes, filtering out both null and undefined rigorously
-            const votes = Object.values(participants).map(p => p.vote).filter(v => v != null);
-
-            if (votes.length === 0) {
-                // No votes cast, show placeholder
-                 // GERMAN: Durchschnitt & Kein Ergebnis
-                 // Use same text size (text-4xl) as the actual average for consistency
-                averageVoteDisplay.innerHTML = `<span class="text-base font-semibold text-gray-700 block mb-1">Durchschnitt</span><span class="text-3xl font-bold text-gray-500 block mb-1">-</span>`;
-                voteDistributionDisplay.innerHTML = '<p class="text-gray-500 italic">Keine Stimmen abgegeben.</p>'; // GERMAN
-                voteDistributionDisplay.className = 'flex justify-center items-center mt-4'; // Reset classes
-                return; // Stop further processing
-            }
-
-            // Calculate Average
-            const numericVotes = votes.map(v => parseFloat(v)).filter(v => !isNaN(v));
-            let average = '-';
-            if (numericVotes.length > 0) {
-                const sum = numericVotes.reduce((a, b) => a + b, 0);
-                average = (sum / numericVotes.length).toFixed(1);
-            }
-
-            // Calculate Min/Max and Check Consensus
-            const participantCount = Object.keys(participants).length;
-            const votedParticipants = Object.values(participants).filter(p => p.hasVoted === true);
-            const votedCount = votedParticipants.length;
-            const allVoted = participantCount > 0 && votedCount === participantCount;
-            let uniqueVotes = new Set();
-            if(votedCount > 0) {
-                uniqueVotes = new Set(votedParticipants.map(p => p.vote));
-            }
-
-            // Consensus requires everyone to have voted AND only one unique vote value exists
-            let consensusReached = allVoted && uniqueVotes.size === 1;
-
-            let minVote = '-';
-            let maxVote = '-';
-            if (numericVotes.length > 0) {
-                 minVote = Math.min(...numericVotes);
-                 maxVote = Math.max(...numericVotes);
-                 // Note: min/max are still calculated even if consensus (incl non-numeric) isn't reached
-            }
-
-            // Build HTML for the average/min/max/consensus section
-            let averageHTML = `
-                <span class="text-base font-semibold text-gray-700 block mb-1">Durchschnitt</span>
-                <span class="text-4xl font-bold text-blue-600 block mb-1">${average}</span>
-                <span class="text-xs text-gray-600 block">(Min: ${minVote}, Max: ${maxVote})</span>
-            `;
-
-            if (consensusReached) {
-                averageHTML += `<span class="text-green-600 font-medium mt-2 block text-sm">Konsens erreicht!</span>`; // Smaller text, less bold
-            }
-
-            averageVoteDisplay.innerHTML = averageHTML;
-
-            // Calculate Distribution
-            const distribution = votes.reduce((acc, vote) => {
-                acc[vote] = (acc[vote] || 0) + 1;
-                return acc;
-            }, {});
-
-            voteDistributionDisplay.innerHTML = ''; // Clear previous distribution
-             // Ensure the container is a flex container for alignment
-            voteDistributionDisplay.className = 'flex flex-wrap justify-center items-center gap-4 mt-4';
-
-            Object.entries(distribution)
-                .sort(([valA], [valB]) => {
-                    // Consistent sorting (numbers first, then '?', then '☕')
-                    const numA = parseFloat(valA); const numB = parseFloat(valB);
-                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-                    if (!isNaN(numA)) return -1;
-                    if (!isNaN(numB)) return 1;
-                    if (valA === '?') return -1;
-                    if (valB === '?') return 1;
-                    if (valA === '☕') return 1; // Place coffee last
-                    if (valB === '☕') return -1;
-                    return valA.localeCompare(valB); // Fallback for other non-numeric
-                })
-                .forEach(([vote, count]) => {
-                // Create the styled box using Tailwind
-                const div = document.createElement('div');
-                div.className = 'flex flex-col items-center justify-center p-4 border border-gray-300 rounded-md bg-white shadow-sm min-w-[80px] h-[90px]'; // Adjusted size and padding
-
-                // Vote value (large)
-                const voteValueEl = document.createElement('span');
-                voteValueEl.className = 'text-2xl font-semibold text-gray-800'; // Adjusted size
-                voteValueEl.textContent = vote === '☕' ? '☕' : vote;
-
-                // Vote count (smaller, below)
-                const voteCountEl = document.createElement('span');
-                voteCountEl.className = 'text-xs text-gray-500 mt-1'; // Adjusted size and margin
-                // GERMAN translation for vote(s)
-                voteCountEl.textContent = `${count} ${count > 1 ? 'Stimmen' : 'Stimme'}`;
-
-                div.appendChild(voteValueEl);
-                div.appendChild(voteCountEl);
-                voteDistributionDisplay.appendChild(div);
-            });
-        }
-
-
-        // Copy invite link to clipboard
-        function copyInviteLink() {
-            // Generate link with query parameter
-            const link = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}`;
-            navigator.clipboard.writeText(link).then(() => {
-                showInPageAlert('Einladungslink kopiert!', 'success', 2000); // Use success alert
-            }).catch(err => {
-                console.error('Failed to copy link: ', err);
-                showInPageAlert('Link konnte nicht kopiert werden.', 'error'); // Use new alert
-            });
-        }
-
-        // Clean up listeners and state
-        function cleanupRoomListeners() {
-             if (roomRef) roomRef.off();
-             if (kickedUsersRef && currentUserId) {
-                 const userKickedRef = database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`);
-                 userKickedRef.off();
-             }
-             if (userRef) userRef.onDisconnect().cancel();
-             clearInterval(countdownInterval);
-             roomRef = null; participantsRef = null; kickedUsersRef = null; userRef = null;
-        }
-
-        function cleanupAndRedirect() {
-            cleanupRoomListeners();
-            // Clear last room ID from DB on explicit redirect/cleanup
-            /*
-            if (currentUserId) {
-                database.ref(`/userProfiles/${currentUserId}/lastRoomId`).remove()
-                    .catch(err => console.error('Error clearing lastRoomId from DB:', err));
-            }
-            */
-            currentRoomId = null; currentUsername = null;
-            document.title = 'Planning Poker'; 
-            // Navigate to base path without query params or hash
-            window.location.href = window.location.pathname; 
-            // showScreen(createRoomScreen); // Let page reload handle showing create screen
-        }
-
-
-        // --- Event Listeners ---
-        createRoomButton.addEventListener('click', handleCreateRoom);
-        joinRoomButton.addEventListener('click', handleJoinRoom);
-        revealButton.addEventListener('click', handleRevealVotes);
-        resetButton.addEventListener('click', handleReset);
-        copyLinkButton.addEventListener('click', copyInviteLink);
-
-        // Add Enter key listener for room name input
-        roomNameInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault(); // Prevent default form submission if any
-                createRoomButton.click(); // Trigger the button click
-            }
-        });
-
-        // Add Enter key listener for display name input
-        displayNameInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault(); // Prevent default form submission if any
-                joinRoomButton.click(); // Trigger the button click
-            }
-        });
-
-        // --- Initial Script Execution --- 
-         let initialRoomIdFromParam = null; // Variable to store potentially lost param
-         try {
-            const initialUrlParams = new URLSearchParams(window.location.search);
-            initialRoomIdFromParam = initialUrlParams.get('room');
-            if(initialRoomIdFromParam) {
-                console.log('Initial check found room param:', initialRoomIdFromParam);
-            }
-         } catch (e) {
-             console.error("Error parsing initial URL params:", e);
-         }
-
-         window.appLogicInitialized = false; 
-
-        // Auth Listener - Primary driver for starting the app logic
-        auth.onAuthStateChanged(user => {
-            console.log('Auth state changed. User:', user ? user.uid : 'null');
-            if (user) {
-                currentUserId = user.uid;
-                // Initialize the main app logic if it hasn't run yet
-                if (!window.appLogicInitialized) {
-                    setupApplicationLogic();
-                }
-            } else {
-                // No user currently authenticated
-                currentUserId = null;
-                // Check if the main app logic was *ever* successfully initialized
-                if (window.appLogicInitialized) {
-                     // If yes, it means user was logged in and interacting, then lost auth
-                     console.log('User signed out after app initialization was complete.');
-                     cleanupRoomListeners();
-                     showScreen(disconnectedScreen);
-                } else {
-                     // App logic never finished initializing, probably initial load or failed sign-in attempt.
-                     // Still on loading screen, meaning initial auth failed or user is new.
-                     console.log('Initial auth state: No user. App logic not yet initialized. Attempting anonymous sign-in...');
-                     auth.signInAnonymously()
-                        .catch(error => {
-                            console.error("Anonymous sign-in failed:", error);
-                            showInPageAlert("Authentifizierung fehlgeschlagen. Bitte lade die Seite neu.", "error", null);
-                             // Ensure loading screen exists before trying to modify it
-                            const loadingEl = document.getElementById('loading-screen');
-                            if (loadingEl) {
-                                loadingEl.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
-                            } else {
-                                document.body.innerHTML = '<div class="p-8 text-center text-red-600">Fehler bei der Authentifizierung. Laden Sie die Seite neu.</div>';
-                            }
-                        });
-                }
-            }
-        });
-
-        // Renamed from initializeApp - contains logic dependent on auth being ready
-        // This function is now primarily called by onAuthStateChanged AFTER user is confirmed
-        function setupApplicationLogic() {
-            // Removed flag check - let onAuthStateChanged control calls
-            console.log('Setup application logic starting for user:', currentUserId);
-
-            if (!currentUserId) {
-                 console.error("CRITICAL: setupApplicationLogic called without currentUserId!");
-                 showScreen(createRoomScreen); // Fallback if something went wrong
+            if (!currentRoomId || !currentUserId) {
+                 alert("Fehler: Raum-ID oder Benutzer-ID fehlt. Beitreten nicht möglich.");
+                 window.location.hash = ''; // Go back home
                  return;
             }
 
-            lucide.createIcons(); // Ensure icons available
-            
-            let roomIdToLoad = null;
+            currentDisplayName = displayName;
+            userRef = ref(db, `rooms/${currentRoomId}/participants/${currentUserId}`);
 
-            // Prioritize the initially captured param
-            if (initialRoomIdFromParam) {
-                roomIdToLoad = initialRoomIdFromParam;
-                console.log('Using initially captured room param:', roomIdToLoad);
-            } else {
-                // If no initial param, check current URL as fallback
-                 const currentUrlParams = new URLSearchParams(window.location.search);
-                 roomIdToLoad = currentUrlParams.get('room');
-                 if (roomIdToLoad) {
-                      console.log('Using current URL room param:', roomIdToLoad);
-                 }
+            const userData = {
+                name: currentDisplayName,
+                vote: null,
+                hasVoted: false,
+                online: true // Set online status on join
+            };
+
+            set(userRef, userData)
+                .then(() => {
+                    console.log(`User ${currentDisplayName} (${currentUserId}) joined room ${currentRoomId}`);
+                    setupRoomListeners();
+                    updateOnlineStatus(true); // Ensure online status and setup disconnect handler
+                    showScreen('poker-room-screen');
+                })
+                .catch((error) => {
+                    console.error("Error joining room:", error);
+                    alert("Beitritt zum Raum fehlgeschlagen. Bitte versuche es erneut.");
+                });
+        });
+
+        // --- Online Status / Disconnect Handling ---
+        function updateOnlineStatus(isOnline) {
+            if (!userRef) return; // Only if userRef is set (i.e., user is in a room)
+
+            const userStatusRef = ref(db, `rooms/${currentRoomId}/participants/${currentUserId}/online`);
+            const userLastSeenRef = ref(db, `rooms/${currentRoomId}/participants/${currentUserId}/lastSeen`);
+
+            // Use onDisconnect to set status to offline when connection is lost
+             const connectedRef = ref(db, '.info/connected');
+             onValue(connectedRef, (snap) => {
+                if (snap.val() === true) {
+                    console.log("Connected to Firebase.");
+                     set(userStatusRef, isOnline);
+
+                    // Set up onDisconnect handlers
+                    onDisconnect(userStatusRef).set(false);
+                    onDisconnect(userLastSeenRef).set(serverTimestamp());
+                } else {
+                     console.log("Disconnected from Firebase.");
+                     // If needed, handle temporary offline state in UI, though Firebase handles reconnection
+                }
+             });
+
+             // Initial set (in case already connected)
+             set(userStatusRef, isOnline);
+        }
+
+
+        // --- Room Listeners ---
+        function setupRoomListeners() {
+            if (!roomRef || !kickedUsersRef) {
+                console.error("Cannot set up listeners without room reference.");
+                return;
             }
-            
 
-            if (roomIdToLoad) {
-                 console.log('Proceeding to load room:', roomIdToLoad);
-                 loadRoomForJoining(roomIdToLoad);
+            // Detach existing listeners if any
+            if (roomListener) roomListener();
+            if (kickedListener) kickedListener();
+
+            console.log("Setting up listeners for room:", currentRoomId);
+
+            // Listen for changes in the entire room data
+            roomListener = onValue(roomRef, (snapshot) => {
+                if (!snapshot.exists()) {
+                    console.log("Room data disappeared, likely deleted.");
+                    alert("Dieser Raum existiert nicht mehr.");
+                    cleanupAndLeaveRoom();
+                    return;
+                }
+                const roomData = snapshot.val();
+                console.log("Room data updated:", roomData);
+
+                // Update Room Title
+                roomTitle.textContent = roomData.name || 'Planning Poker';
+
+                // Update Participants Display
+                renderParticipants(roomData.participants || {}, roomData.revealed || false);
+
+                // Update Results Area
+                updateResultsArea(roomData.participants || {}, roomData.revealed || false);
+
+                // Handle Reveal Countdown and Button Visibility/State
+                handleCountdown(roomData.revealTimestamp, roomData.revealed);
+
+                // Show/Hide Reveal and Reset buttons based on revealed status
+                if (roomData.revealed) {
+                    revealButton.classList.add('hidden');
+                    resetButtonContainer.classList.remove('hidden'); // Show reset button container
+                } else {
+                    revealButton.classList.remove('hidden');
+                    resetButtonContainer.classList.add('hidden'); // Hide reset button container
+                    // handleCountdown will manage disabling reveal during active countdown
+                    // Ensure reveal is enabled if there's NO timestamp
+                    if (!roomData.revealTimestamp) {
+                        revealButton.disabled = false;
+                         revealButton.querySelector('span:not(#countdown-timer)').textContent = 'Stimmen aufdecken';
+                         countdownTimer.classList.add('hidden');
+                    }
+                }
+
+                // Reset button always enabled for now
+            }, (error) => {
+                console.error("Error listening to room data:", error);
+                alert("Verbindung zum Raum verloren. Bitte aktualisiere die Seite.");
+                cleanupAndLeaveRoom();
+            });
+
+             // Listen specifically if the current user gets kicked
+            kickedListener = onValue(kickedUsersRef, (snapshot) => {
+                if (snapshot.exists() && snapshot.val() === true) {
+                    console.log("Detected that current user was kicked.");
+                     alert("Du wurdest aus dem Raum geworfen.");
+                     cleanupAndLeaveRoom(true); // Pass true to indicate kicked
+                }
+            }, (error) => {
+                console.error("Error listening to kicked status:", error);
+                 // Don't necessarily leave the room on error here, might be temporary
+            });
+        }
+
+        // --- Rendering Functions ---
+        function renderParticipants(participants, revealed) {
+            participantsList.innerHTML = ''; // Clear current list
+            let onlineParticipants = 0;
+
+            // Sort participants alphabetically by name for consistent order
+            const sortedParticipantIds = Object.keys(participants).sort((a, b) => {
+                const nameA = participants[a]?.name?.toLowerCase() || '';
+                const nameB = participants[b]?.name?.toLowerCase() || '';
+                return nameA.localeCompare(nameB);
+            });
+
+            sortedParticipantIds.forEach(userId => {
+                const participant = participants[userId];
+                if (!participant || !participant.online) return; // Skip offline users or incomplete data
+
+                onlineParticipants++;
+                const participantDiv = document.createElement('div');
+                participantDiv.className = 'text-center flex-shrink-0 relative group'; // Added relative and group for tooltip/kick button
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'text-sm font-medium text-gray-600 mb-1 truncate w-20'; // Added truncate and fixed width
+                nameDiv.textContent = participant.name;
+                nameDiv.title = participant.name; // Show full name on hover
+
+                const cardDiv = document.createElement('div');
+                cardDiv.className = 'participant-card rounded-lg shadow p-4 w-20 h-28 flex flex-col items-center justify-center relative border border-gray-300'; // Added border border-gray-300
+
+                if (revealed) {
+                    // Show actual vote
+                    cardDiv.classList.add('bg-blue-500'); // Revealed card background - Changed to blue
+                    const voteSpan = document.createElement('span');
+                    voteSpan.className = 'text-3xl font-bold text-white'; // Changed text color to white
+                    voteSpan.textContent = participant.vote ?? '-'; // Show '-' if no vote was cast
+                    cardDiv.appendChild(voteSpan);
+                } else {
+                    // Show voted status (check or question mark)
+                    if (participant.hasVoted) {
+                        cardDiv.classList.add('bg-blue-500'); // Voted card background
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-check text-3xl text-white';
+                        cardDiv.appendChild(icon);
+                    } else {
+                        cardDiv.classList.add('bg-gray-300'); // Not voted card background
+                        const icon = document.createElement('span');
+                        icon.className = 'text-3xl font-bold text-gray-600';
+                        icon.textContent = '?';
+                        cardDiv.appendChild(icon);
+                    }
+                }
+
+                participantDiv.appendChild(nameDiv);
+                participantDiv.appendChild(cardDiv);
+
+                 // Add Kick Button (only show for other users)
+                if (userId !== currentUserId) {
+                    const kickButton = document.createElement('button');
+                    kickButton.innerHTML = '<i class="fas fa-times"></i>';
+                    kickButton.className = 'absolute top-0 right-0 -mt-1 -mr-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-700';
+                    kickButton.title = `${participant.name} rauswerfen`;
+                    kickButton.onclick = (e) => {
+                        e.stopPropagation(); // Prevent triggering other clicks
+                        if (confirm(`Bist du sicher, dass du ${participant.name} rauswerfen möchtest?`)) {
+                            kickUser(userId);
+                        }
+                    };
+                    cardDiv.appendChild(kickButton); // Append to cardDiv for better positioning relative to the card
+                }
+
+
+                participantsList.appendChild(participantDiv);
+            });
+
+             if (onlineParticipants === 0) {
+                 participantsList.innerHTML = '<p class="text-gray-500 italic">Keine aktiven Teilnehmer.</p>';
+             }
+        }
+
+        function renderVotingCards() {
+            votingCardsContainer.innerHTML = ''; // Clear existing cards
+            votingCardValues.forEach(value => {
+                const button = document.createElement('button');
+                button.className = 'card bg-white rounded-lg shadow border border-gray-300 hover:border-blue-400 p-4 h-28 w-20 flex items-center justify-center text-2xl font-bold text-gray-800 transition duration-300 focus:outline-none focus:ring-2 focus:ring-blue-300';
+                button.dataset.value = value;
+                button.textContent = value === '☕' ? '☕' : value; // Display coffee emoji correctly
+
+                button.addEventListener('click', () => handleVote(value));
+                votingCardsContainer.appendChild(button);
+            });
+        }
+
+        function updateSelectedCardVisual(selectedValue) {
+            const cards = votingCardsContainer.querySelectorAll('.card');
+            cards.forEach(card => {
+                if (card.dataset.value === selectedValue) {
+                    card.classList.add('selected', 'border-blue-500', 'bg-blue-100');
+                } else {
+                    card.classList.remove('selected', 'border-blue-500', 'bg-blue-100');
+                    card.classList.add('border-gray-300'); // Ensure default border is reapplied when deselected
+                }
+            });
+        }
+
+        function updateResultsArea(participants, revealed) {
+            if (revealed) {
+                resultsArea.classList.remove('hidden');
+                const onlineVotes = Object.values(participants)
+                                    .filter(p => p.online && p.vote !== null && p.vote !== undefined)
+                                    .map(p => p.vote); // Get all votes (including non-numeric)
+
+                const numericVotes = onlineVotes
+                                        .filter(v => !isNaN(parseFloat(v)))
+                                        .map(v => parseFloat(v));
+
+                let summaryHtml = '';
+
+                // --- Calculate Average, Min, Max (only for numeric votes) ---
+                if (numericVotes.length > 0) {
+                    const sum = numericVotes.reduce((a, b) => a + b, 0);
+                    const avg = (sum / numericVotes.length).toFixed(1);
+                    const min = Math.min(...numericVotes);
+                    const max = Math.max(...numericVotes);
+                    const consensus = min === max;
+
+                    summaryHtml += `
+                        <div class="mb-4">
+                            <div class="mb-1">Durchschnitt:</div>
+                            <div><strong class="text-2xl font-bold">${avg}</strong></div>
+                            <div class="mt-2">
+                                <span class="mr-4">Min: <strong class="text-lg">${min}</strong></span>
+                                <span>Max: <strong class="text-lg">${max}</strong></span>
+                            </div>
+                            ${consensus ? '<div class="mt-2 text-green-600 font-semibold">(Konsens!)</div>' : ''}
+                        </div>
+                        <hr class="my-4">
+                    `;
+                } else {
+                     summaryHtml += '<p class="text-gray-500 italic mb-4">Keine numerischen Stimmen zur Berechnung der Ergebnisse abgegeben.</p>';
+                }
+
+                // --- Calculate Vote Counts for All Options ---
+                const voteCounts = {};
+                onlineVotes.forEach(vote => {
+                    voteCounts[vote] = (voteCounts[vote] || 0) + 1;
+                });
+
+                if (onlineVotes.length > 0) {
+                    let countsHtml = ''; // Remove the h3 tag initialization
+                    // Use a container that allows wrapping and centers items
+                    countsHtml += '<div class="flex flex-wrap justify-center gap-3">';
+
+                    // Display in the order of votingCardValues for consistency
+                    votingCardValues.forEach(value => {
+                        if (voteCounts[value]) {
+                            const count = voteCounts[value];
+                            const stimmeText = count === 1 ? 'Stimme' : 'Stimmen';
+                            countsHtml += `
+                                <div class="bg-gray-200 rounded-lg p-3 text-center shadow">
+                                    <div class="text-2xl font-bold text-gray-800">${value === '☕' ? '☕' : value}</div>
+                                    <div class="text-xs text-gray-600">${count} ${stimmeText}</div>
+                                </div>
+                            `;
+                        }
+                    });
+                     countsHtml += '</div>';
+                     summaryHtml += countsHtml; // Append counts HTML to summary
+                } else if (numericVotes.length === 0) { // Only show if no votes at all were cast
+                    summaryHtml += '<p class="text-gray-500 italic">Keine Stimmen abgegeben.</p>';
+                }
+
+
+                resultsSummary.innerHTML = summaryHtml;
+
+
             } else {
-                 // No room param, show create screen
-                 console.log('No room query param, showing create screen.');
-                 showScreen(createRoomScreen);
+                resultsArea.classList.add('hidden');
+                resultsSummary.innerHTML = '';
             }
         }
 
-        // Function to handle loading room checks and showing enter name screen
-        function loadRoomForJoining(roomId) {
-            if (!roomId) return; // Safety check
+        // --- Voting Logic ---
+        function handleVote(value) {
+            if (!userRef) return; // Should not happen if user is in room
 
-            currentRoomId = roomId;
-            console.log('Attempting to load room for joining:', currentRoomId);
-            showScreen(enterNameScreen); // Show screen before async checks
+            const voteData = {
+                vote: value,
+                hasVoted: true
+            };
 
-            // Perform checks for kicked/existence
-            database.ref(`rooms/${currentRoomId}/kickedUsers/${currentUserId}`).once('value').then(snapshot => {
-                if (snapshot.exists() && snapshot.val() === true) {
-                    // Kicked - clear stored ID and show kicked screen
-                    showScreen(kickedOutScreen);
+            set(ref(db, `rooms/${currentRoomId}/participants/${currentUserId}/vote`), value);
+            set(ref(db, `rooms/${currentRoomId}/participants/${currentUserId}/hasVoted`), true)
+                .then(() => {
+                    console.log(`User ${currentUserId} voted: ${value}`);
+                    updateSelectedCardVisual(value); // Update local selection immediately
+                })
+                .catch(error => {
+                    console.error("Error casting vote:", error);
+                    alert("Stimmabgabe fehlgeschlagen. Bitte versuche es erneut.");
+                });
+        }
+
+        // --- Actions (Reveal, Reset, Kick) ---
+        const COUNTDOWN_DURATION = 3000; // 3 seconds countdown
+
+        revealButton.addEventListener('click', () => {
+            if (!roomRef) return;
+            const revealTimestampRef = ref(db, `rooms/${currentRoomId}/revealTimestamp`);
+            const revealedRef = ref(db, `rooms/${currentRoomId}/revealed`);
+
+            // Use a transaction to ensure only one user sets the timestamp
+            runTransaction(revealTimestampRef, (currentTimestamp) => {
+                if (currentTimestamp === null) { // Only set if not already set
+                    return serverTimestamp(); // Set the server timestamp
                 } else {
-                    // Not kicked, check if room exists
-                    database.ref(`rooms/${currentRoomId}`).once('value', roomSnapshot => {
-                        if (roomSnapshot.exists()) {
-                            // Room exists, user not kicked - stay on enterNameScreen
-                            // Ensure the query param matches the loaded room using replaceState
-                            const urlParams = new URLSearchParams(window.location.search);
-                            if (urlParams.get('room') !== currentRoomId) {
-                                 history.replaceState(null, '', `${window.location.pathname}?room=${currentRoomId}`);
-                            }
-                        } else {
-                            // Room doesn't exist - show error, clear IDs, stay on screen, disable join
-                            showInPageAlert("Der Raum, dem du beitreten wolltest, existiert nicht oder wurde gelöscht.", 'error');
-                            history.replaceState(null, '', window.location.pathname); // Clear query param
-                            currentRoomId = null; // Clear internal ID
-                            joinRoomButton.disabled = true;
-                        }
-                    }).catch(error => {
-                         // Error checking room - show error, clear IDs, stay on screen, disable join
-                         console.error("Error checking room existence:", error);
-                         showInPageAlert("Der Raum konnte nicht überprüft werden. Bitte versuche es erneut.", 'error');
-                         history.replaceState(null, '', window.location.pathname); // Clear query param
-                         currentRoomId = null;
-                         joinRoomButton.disabled = true;
-                    });
+                    return; // Abort transaction if already set
+                }
+            }).then((result) => {
+                if (result.committed) {
+                     console.log("Reveal countdown initiated.");
+                     // The listener will handle the actual reveal after countdown
+                } else {
+                    console.log("Reveal countdown already in progress.");
                 }
             }).catch(error => {
-                  // Error checking kicked status - show error, clear IDs, stay on screen, disable join
-                  console.error("Error checking kicked status:", error);
-                  showInPageAlert("Konnte den Status nicht überprüfen. Bitte versuche es erneut.", 'error');
-                   history.replaceState(null, '', window.location.pathname); // Clear query param
-                   currentRoomId = null;
-                   joinRoomButton.disabled = true;
-                   // Make sure we don't proceed without a user ID if auth failed initially
-                   if (!auth.currentUser) {
-                       showScreen(createRoomScreen); // Fallback if auth is lost somehow
-                   }
-             });
+                console.error("Transaction failed:", error);
+                 // Attempt to set revealed directly if transaction fails (less ideal sync)
+                 set(revealedRef, true);
+            });
+        });
+
+        function handleCountdown(timestamp, revealed) {
+             // Clear any existing interval
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+                // Don't reset button text/state here, let the main listener handle it based on final revealed state
+            }
+
+            countdownTimer.classList.add('hidden'); // Hide timer span by default
+
+            if (timestamp && !revealed) {
+                revealButton.disabled = true; // Disable button during countdown
+                // countdownTimer.classList.remove('hidden'); // We won't use the separate span anymore
+
+                const updateCountdownText = () => {
+                    const now = Date.now();
+                    const remainingMillis = Math.max(0, timestamp + COUNTDOWN_DURATION - now);
+                    const remainingSeconds = Math.ceil(remainingMillis / 1000);
+
+                    if (remainingMillis <= 0) {
+                        // Countdown finished
+                        clearInterval(countdownInterval);
+                        countdownInterval = null;
+                        revealButton.querySelector('span:not(#countdown-timer)').textContent = 'Wird aufgedeckt...'; // Final text before hide
+                        // The main listener will hide the button once revealed=true propagates
+
+                        // Set revealed to true - ideally done by the initiator,
+                        // but can be done by anyone if initiator disconnects.
+                        // Check if it's already revealed before setting again.
+                        get(ref(db, `rooms/${currentRoomId}/revealed`)).then(snap => {
+                            if (!snap.val()) {
+                                set(ref(db, `rooms/${currentRoomId}/revealed`), true);
+                                console.log("Countdown finished, setting revealed=true");
+                            }
+                        });
+                    } else {
+                        // Update button text with countdown
+                        revealButton.querySelector('span:not(#countdown-timer)').textContent = `Wird aufgedeckt in ${remainingSeconds}...`;
+                    }
+                };
+
+                updateCountdownText(); // Initial call
+                countdownInterval = setInterval(updateCountdownText, 500); // Update text frequently
+
+            } else {
+                 // No active countdown OR already revealed
+                 // The main listener handles enabling/disabling/hiding and text based on revealed state
+                 // If revealed, button is hidden by listener.
+                 // If !revealed and !timestamp, listener enables and sets text.
+                 if (!revealed) {
+                    // Ensure button is enabled and text is default if not revealed and no timestamp
+                    revealButton.disabled = false;
+                    revealButton.querySelector('span:not(#countdown-timer)').textContent = 'Stimmen aufdecken';
+                 }
+            }
         }
+
+
+        resetButton.addEventListener('click', () => {
+            if (!roomRef || !participantsRef) return;
+
+            console.log("Resetting votes...");
+
+            // Get current participants first
+            get(participantsRef).then(snapshot => {
+                if (snapshot.exists()) {
+                    const participants = snapshot.val();
+                    const updates = {};
+                    // Reset revealed status and timestamp
+                    updates[`/rooms/${currentRoomId}/revealed`] = false;
+                    updates[`/rooms/${currentRoomId}/revealTimestamp`] = null;
+
+                    // Reset each participant's vote status
+                    Object.keys(participants).forEach(userId => {
+                        updates[`/rooms/${currentRoomId}/participants/${userId}/vote`] = null;
+                        updates[`/rooms/${currentRoomId}/participants/${userId}/hasVoted`] = false;
+                    });
+
+                    // Perform a multi-path update using update()
+                    // Use update instead of set for multi-path updates
+                    return update(ref(db), updates);
+                }
+            }).then(() => {
+                 console.log("Votes reset successfully.");
+                 updateSelectedCardVisual(null); // Clear local selection
+                 // UI updates will be handled by the onValue listener
+            }).catch(error => {
+                console.error("Error resetting votes:", error);
+                alert("Zurücksetzen der Stimmen fehlgeschlagen. Bitte versuche es erneut.");
+            });
+        });
+
+        function kickUser(userIdToKick) {
+            if (!currentRoomId || !userIdToKick) return;
+            if (userIdToKick === currentUserId) {
+                alert("Du kannst dich nicht selbst rauswerfen.");
+                return;
+            }
+
+            console.log(`Attempting to kick user: ${userIdToKick}`);
+            const kickedUserRef = ref(db, `rooms/${currentRoomId}/kickedUsers/${userIdToKick}`);
+            const participantToRemoveRef = ref(db, `rooms/${currentRoomId}/participants/${userIdToKick}`);
+
+            // 1. Mark the user as kicked
+            set(kickedUserRef, true)
+                .then(() => {
+                    console.log(`User ${userIdToKick} marked as kicked.`);
+                    // 2. Optionally remove the participant entry (or just rely on kicked status)
+                    // Setting online to false might be better than removing,
+                    // allows seeing they *were* there but got kicked.
+                    // Let's just mark as kicked for now. The listener on the kicked client handles the redirect.
+                    // remove(participantToRemoveRef); // Uncomment to fully remove participant data
+                })
+                .catch(error => {
+                    console.error(`Error kicking user ${userIdToKick}:`, error);
+                    alert(`Rauswerfen des Benutzers fehlgeschlagen. Bitte versuche es erneut.`);
+                });
+        }
+
+
+        // --- Utility Functions ---
+        copyLinkButton.addEventListener('click', () => {
+            const link = `${window.location.origin}${window.location.pathname}#room=${currentRoomId}`;
+            navigator.clipboard.writeText(link)
+                .then(() => {
+                    copyTooltipText.textContent = 'Kopiert!';
+                    setTimeout(() => {
+                         copyTooltipText.textContent = 'Einladungslink kopieren';
+                    }, 1500); // Reset tooltip text after 1.5 seconds
+                })
+                .catch(err => {
+                    console.error('Failed to copy link: ', err);
+                     copyTooltipText.textContent = 'Fehler beim Kopieren';
+                     setTimeout(() => {
+                         copyTooltipText.textContent = 'Einladungslink kopieren';
+                    }, 1500);
+                });
+        });
+
+        function cleanupAndLeaveRoom(wasKicked = false) {
+             console.log("Cleaning up and leaving room...");
+             // Detach listeners
+             if (roomListener) roomListener();
+             if (kickedListener) kickedListener();
+             roomListener = null;
+             kickedListener = null;
+
+             // Clear interval
+             if (countdownInterval) {
+                 clearInterval(countdownInterval);
+                 countdownInterval = null;
+             }
+
+             // Set user offline if they weren't kicked (if kicked, they are already handled)
+             if (!wasKicked && userRef) {
+                 updateOnlineStatus(false);
+             }
+
+             // Clear local state
+             currentRoomId = null;
+             currentDisplayName = null;
+             roomRef = null;
+             participantsRef = null;
+             userRef = null;
+             kickedUsersRef = null;
+
+             // Clear URL hash and show appropriate screen
+             window.location.hash = wasKicked ? 'kicked=true' : '';
+             if (wasKicked) {
+                 showScreen('kicked-screen');
+             } else {
+                 showScreen('create-room-screen');
+             }
+        }
+
+        // --- Initial Load ---
+        renderVotingCards(); // Render cards initially
+        // handleUrlChange is now called by onAuthStateChanged listener when auth is ready
     </script>
+
 </body>
 </html>
