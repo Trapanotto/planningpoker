@@ -245,6 +245,7 @@
 
             try {
                  // Check if user was previously kicked before allowing join
+                 // RESTORED: Check if user is currently kicked
                 const kickedSnapshot = await get(ref(db, `rooms/${currentRoomId}/kicked/${currentUserId}`));
                 if (kickedSnapshot.exists()) {
                     showScreen(kickedScreen);
@@ -319,7 +320,8 @@
                     console.log("Du wurdest aus dem Raum geworfen.");
                     cleanupFirebaseListeners(); // Stop listening to room updates
                     showScreen(kickedScreen); // Use showScreen to hide loading screen
-                    window.location.hash = ''; // Clear room from URL
+                    // REMOVED: Do not clear hash, keep room context for retry
+                    // window.location.hash = '';
                     // Optionally remove the onDisconnect handler if kicked
                     if (userDisconnectRef) {
                         userDisconnectRef.cancel();
@@ -807,11 +809,53 @@
             if (e.key === 'Enter') joinRoom();
         });
 
+        // ADDED: Listener for the retry join button
+        const retryJoinBtn = document.getElementById('retry-join-btn');
+        if (retryJoinBtn) { // Check if element exists
+            retryJoinBtn.addEventListener('click', handleRetryJoin);
+        } else {
+            console.error("Retry join button not found!");
+        }
+
         revealBtn.addEventListener('click', handleRevealVotes);
         resetBtn.addEventListener('click', handleResetVotes);
 
         // --- Initialization ---
         initializeAuth();
+
+        // ADDED: Handler function for the retry join button
+        function handleRetryJoin() {
+            if (!currentUserId) {
+                console.error("Keine Benutzer-ID zum erneuten Beitreten vorhanden.");
+                alert("Fehler: Benutzerinformationen nicht gefunden. Bitte Seite neu laden.");
+                return;
+            }
+             // Re-check currentRoomId from hash in case it was lost
+            const hash = window.location.hash.substring(1);
+            if (!hash) {
+                console.error("Keine Raum-ID in URL zum erneuten Beitreten vorhanden.");
+                alert("Fehler: Raum-Informationen nicht gefunden. Bitte Link erneut verwenden oder Seite neu laden.");
+                window.location.hash = ''; // Clear potentially invalid hash
+                showScreen(initialScreen);
+                return;
+            }
+            currentRoomId = hash; // Ensure currentRoomId is up-to-date
+
+            const kickFlagRef = ref(db, `rooms/${currentRoomId}/kicked/${currentUserId}`);
+
+            console.log(`Versuche Kick-Flag für ${currentUserId} in Raum ${currentRoomId} zu entfernen...`);
+            remove(kickFlagRef)
+                .then(() => {
+                    console.log("Kick-Flag erfolgreich entfernt.");
+                    // After removing the flag, show the join screen for this room
+                    showScreen(joinScreen);
+                    usernameInput.focus(); // Focus username input
+                })
+                .catch(err => {
+                    console.error("Fehler beim Entfernen des Kick-Flags:", err);
+                    alert("Konnte den Kick-Status nicht entfernen. Möglicherweise bestehen Netzwerkprobleme oder Berechtigungsprobleme. Bitte versuche es erneut oder kontaktiere den Raumersteller.");
+                });
+        }
 
     </script>
     <style>
@@ -912,6 +956,10 @@
 
          <div id="kicked-screen" class="hidden text-center bg-white p-8 rounded-lg shadow-md">
             <h1 class="text-3xl font-bold mb-6 text-red-600">Du wurdest entfernt!</h1>
+            <p class="mb-6 text-gray-700">Du wurdest aus diesem Raum entfernt.</p>
+            <button id="retry-join-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-md transition duration-150 ease-in-out">
+                Erneut beitreten
+            </button>
         </div>
 
     </div>
