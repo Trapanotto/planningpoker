@@ -409,11 +409,11 @@
                 return;
             }
 
-            // --- Construct paths and create local refs --- 
+            // --- Construct paths and create local refs ---
             const usersPath = `rooms/${roomId}/users`;
             const statePath = `rooms/${roomId}/state`;
             // Kicked path needs currentUserId which is global
-            const kickedPath = `rooms/${roomId}/kicked/${currentUserId}`; 
+            const kickedPath = `rooms/${roomId}/kicked/${currentUserId}`;
 
             if (!currentUserId) {
                  console.error("Cannot setup kicked listener without currentUserId");
@@ -433,13 +433,27 @@
 
             // Listen for changes in users (join, leave, vote, online status)
             const usersUnsubscribe = onValue(currentUsersRef, (snapshot) => {
+                // Capture refs used within this listener scope
+                const capturedStateRefForUsersListener = stateRef; // Capture global stateRef
+                const capturedUsersRefForUsersListener = currentUsersRef; // Use the ref passed to onValue
+
                 const users = snapshot.val() || {};
                 // Fetch the current revealed state before rendering participants
-                get(currentStateRef).then(stateSnapshot => {
+                 if (!capturedStateRefForUsersListener) {
+                     console.warn("Users listener fired with null capturedStateRef, skipping state fetch.");
+                     renderParticipants(users, false); // Render with default state
+                     updateResults(users); // Update results based on user data only
+                     if (users[currentUserId]) {
+                        updateUserVoteHighlight(users[currentUserId].vote);
+                     }
+                     return;
+                 }
+
+                get(capturedStateRefForUsersListener).then(stateSnapshot => {
                     const state = stateSnapshot.val() || { votesRevealed: false, revealState: 'idle' };
                     // Pass users data directly
                     renderParticipants(users, state.votesRevealed);
-                    updateResults(users);
+                    updateResults(users); // Pass users data here too
                     if (users[currentUserId]) {
                         updateUserVoteHighlight(users[currentUserId].vote);
                     }
@@ -448,28 +462,46 @@
 
             // Listen for changes in room state (votes revealed, reveal state)
             const stateUnsubscribe = onValue(currentStateRef, (snapshot) => {
+                // Capture refs used within this listener scope at the moment the listener fires
+                const capturedStateRefForStateListener = currentStateRef; // Use the ref passed to onValue
+                const capturedUsersRefForStateListener = usersRef; // Capture global usersRef
+                const capturedUserRefForStateListener = userRef; // Capture global userRef
+
                 const state = snapshot.val() || { votesRevealed: false, revealState: 'idle' };
                 updateButtonAndCountdownUI(state); // Use a dedicated function for UI updates
                 updateResultsVisibility(state.votesRevealed);
+
                 // Fetch users before rendering participants in state listener
-                get(currentUsersRef).then(userSnapshot => {
-                     const users = userSnapshot.val() || {};
-                     renderParticipants(users, state.votesRevealed);
-                }).catch(error => console.error("Error fetching users in state listener:", error));
+                if (capturedUsersRefForStateListener) { // Check if captured ref is valid
+                    get(capturedUsersRefForStateListener).then(userSnapshot => {
+                         const users = userSnapshot.val() || {};
+                         renderParticipants(users, state.votesRevealed);
+                    }).catch(error => console.error("Error fetching users in state listener:", error));
+                } else {
+                    console.warn("State listener fired with null capturedUsersRef.");
+                    renderParticipants({}, state.votesRevealed); // Render empty participants if ref is null
+                }
+
 
                 if (state.votesRevealed) {
+                    // Pass null, updateResults will fetch users using its own check
                     updateResults(null);
                 } else {
                     resultsSummary.classList.add('hidden');
-                    get(userRef).then(userSnapshot => {
-                        const userData = userSnapshot.val();
-                        // Note: userRef is global and might be null after hash change,
-                        // but this specific get() might be okay if the state listener fires quickly.
-                        // Consider passing userRef path if issues persist.
-                        if (userData) {
-                            updateUserVoteHighlight(userData.vote);
-                        }
-                    });
+                    if (capturedUserRefForStateListener) { // Check if captured ref is valid
+                        get(capturedUserRefForStateListener).then(userSnapshot => {
+                            const userData = userSnapshot.val();
+                            if (userData) {
+                                updateUserVoteHighlight(userData.vote);
+                            } else {
+                                // User data might be null if user left/was removed concurrently
+                                updateUserVoteHighlight(null);
+                            }
+                        }).catch(error => console.error("Error fetching user data in state listener:", error));
+                    } else {
+                        // This might happen if listener fires before userRef is set after joining, or after cleanup
+                        updateUserVoteHighlight(null); // Reset highlight if user ref is missing
+                    }
                 }
             });
 
@@ -686,14 +718,32 @@
         }
 
         function updateResults(usersData) {
-             get(stateRef).then(stateSnapshot => {
+             // --- Capture references at the start ---
+             const currentUpdateStateRef = stateRef;
+             const currentUpdateUsersRef = usersRef;
+
+             // --- Add checks for null references ---
+             if (!currentUpdateStateRef) {
+                 console.warn("updateResults called with null stateRef, hiding results.");
+                 resultsSummary.classList.add('hidden');
+                 return;
+             }
+              if (!currentUpdateUsersRef) {
+                 console.warn("updateResults called with null usersRef, hiding results.");
+                 resultsSummary.classList.add('hidden');
+                 return;
+             }
+             // --- End checks ---
+
+             get(currentUpdateStateRef).then(stateSnapshot => { // Use captured state ref
                 const state = stateSnapshot.val() || { votesRevealed: false };
                 if (!state.votesRevealed) {
                     resultsSummary.classList.add('hidden');
                     return;
                 }
 
-                const fetchUsers = usersData ? Promise.resolve(usersData) : get(usersRef).then(s => s.val() || {});
+                // Use provided usersData if available, otherwise fetch using captured users ref
+                const fetchUsers = usersData ? Promise.resolve(usersData) : get(currentUpdateUsersRef).then(s => s.val() || {});
 
                 fetchUsers.then(users => {
                     let sum = 0;
