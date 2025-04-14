@@ -531,14 +531,20 @@
 
                 // Use the passed votesRevealed argument directly
                 if (votesRevealed) {
-                    // Explicitly check for null or undefined before showing dash
-                    const displayVote = (userData.vote === null || typeof userData.vote === 'undefined') ? '-' : userData.vote;
-                    // Set background to indigo and text to white for revealed state
-                    cardContentDiv.innerHTML = `<span class="text-2xl font-bold text-white">${displayVote}</span>`;
-                    // Remove border logic and set background
-                    participantDiv.classList.remove('bg-white', 'border-indigo-500', 'border-gray-300');
-                    participantDiv.classList.add('bg-indigo-600');
-
+                    // Check if user actually voted
+                    if (userData.vote === null || typeof userData.vote === 'undefined') {
+                        // User did NOT vote - Show dash on gray background
+                        const displayVote = (userData.vote === null || typeof userData.vote === 'undefined') ? '-' : userData.vote;
+                        cardContentDiv.innerHTML = `<span class="text-2xl font-bold text-gray-500">${displayVote}</span>`; // Gray text for dash
+                        participantDiv.classList.remove('bg-white', 'bg-indigo-600');
+                        participantDiv.classList.add('bg-gray-200', 'border-gray-300'); // Gray card, gray border
+                    } else {
+                        // User DID vote - Show vote on indigo background
+                        const displayVote = (userData.vote === null || typeof userData.vote === 'undefined') ? '-' : userData.vote;
+                        cardContentDiv.innerHTML = `<span class="text-2xl font-bold text-white">${displayVote}</span>`; // White text for vote
+                        participantDiv.classList.remove('bg-white', 'bg-gray-200', 'border-gray-300');
+                        participantDiv.classList.add('bg-indigo-600'); // Indigo card
+                    }
                 } else {
                      // When votes are hidden
                      // console.log(`Rendering hidden vote for ${userData.name || 'Unknown'} (${userId}). Vote value:`, userData.vote, 'Type:', typeof userData.vote); // REMOVED LOG
