@@ -201,22 +201,44 @@
                 const checkRoomRef = ref(db, `rooms/${currentRoomId}`);
                 get(checkRoomRef).then((snapshot) => {
                     if (snapshot.exists()) {
-                        // Room exists, show room screen in background and join overlay
-                        console.log(`Raum ${currentRoomId} gefunden, zeige Raum und Beitritts-Overlay.`);
-                        showScreen(roomScreen); // Show the room screen
+                        // --- Check if current user is kicked BEFORE showing join overlay --- 
+                        const checkKickedRef = ref(db, `rooms/${currentRoomId}/kicked/${currentUserId}`);
+                        get(checkKickedRef).then(kickedSnapshot => {
+                            if (kickedSnapshot.exists()) {
+                                console.log(`User ${currentUserId} is kicked from room ${currentRoomId}. Showing kicked screen directly.`);
+                                showScreen(kickedScreen);
+                                // Optionally update room title if needed for kicked screen context, though not strictly necessary
+                                // updateRoomUI(); 
+                            } else {
+                                // User is NOT kicked, proceed with showing room and join overlay
+                                console.log(`Room ${currentRoomId} found, user not kicked. Showing room and join overlay.`);
+                                showScreen(roomScreen); // Show the room screen
+                                updateRoomUI(); // Update room title etc. based on ID
+                                setupRoomListeners(currentRoomId); // SETUP LISTENERS HERE, passing roomId
+                                renderVotingCards(); // RENDER CARDS HERE
+                                showJoinOverlay(); // Show the join form as an overlay
+                            }
+                        }).catch(error => {
+                             console.error("Error checking kicked status:", error);
+                             // Fallback: Proceed to join overlay on error?
+                             // Or show error screen? For now, proceed as if not kicked.
+                             console.log(`Error checking kick status for room ${currentRoomId}. Proceeding to join overlay.`);
+                             showScreen(roomScreen); 
+                             updateRoomUI(); 
+                             setupRoomListeners(currentRoomId);
+                             renderVotingCards(); 
+                             showJoinOverlay(); 
+                        });
+                        // --- End Kick Check --- 
 
-                        // Setup listeners immediately, passing refs
-                        updateRoomUI(); // Update room title etc. based on ID
-                        // Ensure refs are valid before passing
-                        if (usersRef && stateRef && kickedRef) {
-                            setupRoomListeners(currentRoomId); // SETUP LISTENERS HERE, passing roomId
-                        } else {
-                            console.error("Refs not ready for initial listener setup in checkUrlForRoom");
-                        }
-                        renderVotingCards(); // RENDER CARDS HERE
+                        // OLD LOGIC (Now inside the 'else' block of the kick check)
+                        // console.log(`Raum ${currentRoomId} gefunden, zeige Raum und Beitritts-Overlay.`);
+                        // showScreen(roomScreen); // Show the room screen
+                        // updateRoomUI(); // Update room title etc. based on ID
+                        // setupRoomListeners(currentRoomId); // SETUP LISTENERS HERE, passing roomId
+                        // renderVotingCards(); // RENDER CARDS HERE
+                        // showJoinOverlay(); // Show the join form as an overlay
 
-                        showJoinOverlay(); // Show the join form as an overlay
-                        // usernameInput focus is handled by showJoinOverlay
                     } else {
                         // Room doesn't exist, clear hash and show initial screen
                         console.warn(`Raum ${currentRoomId} nicht gefunden.`);
@@ -1034,28 +1056,36 @@
 
         // ADDED: Handler function for the rejoin button (Modified to show overlay again if needed)
         function handleRejoin() {
-            if (!currentUserId || !currentRoomId || !currentUsername) {
-                console.error("Fehlende Informationen für den erneuten Beitritt (userId, roomId, or username).");
-                alert("Fehler: Benutzer- oder Rauminformationen fehlen. Bitte laden Sie die Seite neu oder verwenden Sie den Link erneut.");
+            // --- Capture IDs BEFORE cleanup ---
+            const roomIdToRejoin = currentRoomId;
+            const userIdToRejoin = currentUserId;
+            // --- End Capture ---
+
+            // --- Clean up any existing listeners FIRST ---
+            cleanupFirebaseListeners();
+            // --- End Cleanup ---
+
+            // Only check for userId and roomId, username might not be set yet
+            if (!userIdToRejoin || !roomIdToRejoin) {
+                console.error("Fehlende Informationen für den erneuten Beitritt (userId or roomId).");
+                alert("Fehler: Wichtige Benutzer- oder Rauminformationen fehlen. Bitte laden Sie die Seite neu oder verwenden Sie den Link erneut.");
                 // Reset to initial state might be safer
                 window.location.hash = '';
-                 hideJoinOverlay(); // Make sure overlay is hidden
+                hideJoinOverlay(); // Make sure overlay is hidden
                 showScreen(initialScreen);
                 return;
             }
 
-            const kickFlagRef = ref(db, `rooms/${currentRoomId}/kicked/${currentUserId}`);
+            // Use captured local variables to construct ref
+            const kickFlagRef = ref(db, `rooms/${roomIdToRejoin}/kicked/${userIdToRejoin}`);
 
-            console.log(`Versuche Kick-Flag für ${currentUserId} (${currentUsername}) in Raum ${currentRoomId} zu entfernen...`);
+            console.log(`Versuche Kick-Flag für ${userIdToRejoin} in Raum ${roomIdToRejoin} zu entfernen...`);
             remove(kickFlagRef)
                 .then(() => {
                     console.log("Kick-Flag erfolgreich entfernt. Zeige Beitritts-Overlay...");
-                     // Show the room screen (in case it wasn't visible) and the join overlay again
-                     showScreen(roomScreen);
-                     updateRoomUI(); // Make sure room title is correct
-                     showJoinOverlay(); // Show overlay to re-enter (or just click join if username is kept)
-                    // Don't call joinRoom directly, let the user click the button in the overlay.
-                    // If currentUsername is still valid, they just need to click 'Beitreten'.
+                    // Re-run the room check logic now that the kick flag is gone.
+                    // This will show the join overlay for the user to enter their name.
+                    checkUrlForRoom();
                 })
                 .catch(err => {
                     console.error("Fehler beim Entfernen des Kick-Flags:", err);
@@ -1103,7 +1133,7 @@
 
         <div id="initial-screen" class="hidden text-center bg-white p-8 rounded-lg shadow-md">
             <h1 class="text-3xl font-bold mb-6 text-gray-700">Planning Poker</h1>
-            <label for="room-name" class="block text-sm font-medium text-gray-700 mb-2">Raum erstellen:</label>
+            
             <input type="text" id="room-name" class="block w-full max-w-sm mx-auto p-3 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 mb-4" placeholder="Raumname">
             <button id="create-room-btn" class="block w-full max-w-sm mx-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-md transition duration-150 ease-in-out">
                 Raum erstellen
@@ -1114,8 +1144,8 @@
         <div id="join-overlay" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
             <div id="join-screen-content" class="bg-white p-8 rounded-lg shadow-md w-full max-w-sm text-center">
                 <!-- Content from original join-screen moved here -->
-                 <h2 class="text-3xl font-bold mb-6 text-gray-700">Raum beitreten</h2> <!-- Changed to h2 -->
-                 <label for="username" class="block text-sm font-medium text-gray-700 mb-2">Dein Name:</label>
+                 <h2 class="text-3xl font-bold mb-3 text-gray-700 text-left">Raum beitreten</h2> <!-- Changed to h2, added text-left -->
+                 <label for="username" class="block text-sm font-medium text-gray-700 mb-2 text-left">Dein Name:</label>
                  <input type="text" id="username" class="block w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 mb-4" placeholder="Benutzername">
                  <button id="join-room-btn" class="block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md transition duration-150 ease-in-out">
                      Beitreten
