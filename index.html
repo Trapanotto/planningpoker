@@ -376,23 +376,23 @@
                     if (votesRevealed) {
                         // Explicitly check for null or undefined before showing dash
                         const displayVote = (userData.vote === null || typeof userData.vote === 'undefined') ? '-' : userData.vote;
-                        // Set background to blue and text to white for revealed state
+                        // Set background to indigo and text to white for revealed state
                         cardContentDiv.innerHTML = `<span class="text-2xl font-bold text-white">${displayVote}</span>`;
                         // Remove border logic and set background
-                        participantDiv.classList.remove('bg-white', 'border-blue-500', 'border-gray-300');
-                        participantDiv.classList.add('bg-blue-500');
+                        participantDiv.classList.remove('bg-white', 'border-indigo-500', 'border-gray-300');
+                        participantDiv.classList.add('bg-indigo-600');
 
                     } else {
                          // When votes are hidden
                          // console.log(`Rendering hidden vote for ${userData.name || 'Unknown'} (${userId}). Vote value:`, userData.vote, 'Type:', typeof userData.vote); // REMOVED LOG
-                        participantDiv.classList.remove('bg-blue-500', 'border-blue-600', 'bg-gray-200', 'border-gray-300', 'border-blue-500'); // Clear previous state styles
+                        participantDiv.classList.remove('bg-indigo-600', 'border-indigo-700', 'bg-gray-200', 'border-gray-300', 'border-indigo-500'); // Clear previous state styles
 
                         // Check if vote is explicitly not null/undefined
                         if (userData.vote !== null && typeof userData.vote !== 'undefined') { // User has voted (but hidden)
                             // console.log(` -> Voted (hidden) for ${userData.name || 'Unknown'}, applying blue style.`); // REMOVED LOG
                             cardContentDiv.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
                             participantDiv.classList.remove('bg-white'); // Ensure white is removed
-                            participantDiv.classList.add('bg-blue-500', 'border-blue-600'); // Blue card, blue border
+                            participantDiv.classList.add('bg-indigo-600', 'border-indigo-700'); // Indigo card, indigo border
                         } else { // User has NOT voted (vote is null or undefined)
                             // console.log(` -> Not voted for ${userData.name || 'Unknown'}, applying gray style.`); // REMOVED LOG
                             cardContentDiv.innerHTML = `<span class="text-2xl font-bold text-[#4b5563]">?</span>`;
@@ -424,10 +424,10 @@
 
         function getVoteColor(vote) {
             if (vote === '☕') return 'text-yellow-600';
-            if (vote === '?') return 'text-blue-600';
+            if (vote === '?') return 'text-indigo-600';
             // Check for null, undefined, or the dash representation
             if (vote === null || typeof vote === 'undefined' || vote === '-') return 'text-[#4b5563]';
-            return 'text-blue-600'; // Default for numbers
+            return 'text-indigo-600'; // Default for numbers
         }
 
         function updateRoomUI() {
@@ -545,7 +545,7 @@
 
                     // Clear previous results and apply base styling
                     resultsSummary.innerHTML = '';
-                    resultsSummary.className = 'mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-md text-center'; // Reset classes
+                    resultsSummary.className = 'mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md text-center'; // Adjusted background and border
 
                     if (numericVoteCount > 0) {
                         const average = (sum / numericVoteCount).toFixed(1);
@@ -560,7 +560,7 @@
                         avgLabel.className = 'text-sm text-gray-600';
                         avgContainer.appendChild(avgLabel);
                         const avgElement = document.createElement('p');
-                        avgElement.innerHTML = `<span class="font-bold text-4xl text-blue-600">${average}</span>`;
+                        avgElement.innerHTML = `<span class="font-bold text-4xl">${average}</span>`;
                         avgContainer.appendChild(avgElement);
                         resultsSummary.appendChild(avgContainer);
 
@@ -620,7 +620,7 @@
 
                             const voteValueSpan = document.createElement('span');
                             voteValueSpan.textContent = vote;
-                            voteValueSpan.className = `text-2xl font-bold mb-1 ${getVoteColor(vote)}`; // Apply color to vote value
+                            voteValueSpan.className = `text-2xl font-bold mb-1`; // Apply color to vote value
                             card.appendChild(voteValueSpan);
 
                             const voteCountSpan = document.createElement('span');
@@ -645,13 +645,13 @@
         function updateUserVoteHighlight(currentUserVote) {
              document.querySelectorAll('#voting-cards button').forEach(btn => {
                 // Reset style first
-                btn.classList.remove('bg-blue-500', 'text-white', 'hover:bg-blue-600');
+                btn.classList.remove('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
                 btn.classList.add('bg-white', 'hover:bg-gray-100', 'text-gray-800');
 
                 // Apply selected style if this button matches the user's vote
                 if (btn.dataset.value === currentUserVote && currentUserVote !== null) {
                      btn.classList.remove('bg-white', 'hover:bg-gray-100', 'text-gray-800');
-                     btn.classList.add('bg-blue-500', 'text-white', 'hover:bg-blue-600');
+                     btn.classList.add('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
                 }
             });
         }
@@ -664,7 +664,7 @@
             if (!userRef) return; // Not in a room
 
             // Check if this card is already selected (has blue background)
-            const isCurrentlySelected = selectedButton.classList.contains('bg-blue-500');
+            const isCurrentlySelected = selectedButton.classList.contains('bg-indigo-600');
             const newValue = isCurrentlySelected ? null : selectedValue;
 
             // Update Firebase
@@ -675,14 +675,14 @@
                     // Update visual state of voting cards
                     document.querySelectorAll('#voting-cards button').forEach(btn => {
                         // Reset all buttons to default style
-                        btn.classList.remove('bg-blue-500', 'text-white', 'hover:bg-blue-600');
+                        btn.classList.remove('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
                         btn.classList.add('bg-white', 'hover:bg-gray-100', 'text-gray-800');
                     });
 
                     if (newValue !== null) {
                         // Apply selected style to the clicked button
                         selectedButton.classList.remove('bg-white', 'hover:bg-gray-100', 'text-gray-800');
-                        selectedButton.classList.add('bg-blue-500', 'text-white', 'hover:bg-blue-600');
+                        selectedButton.classList.add('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
                     }
                 })
                 .catch(error => console.error("Fehler beim Abgeben/Ändern der Stimme:", error));
@@ -763,7 +763,7 @@
             });
              // Visually reset voting cards
             document.querySelectorAll('#voting-cards button').forEach(btn => {
-                btn.classList.remove('bg-blue-500', 'text-white', 'hover:bg-blue-600');
+                btn.classList.remove('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
                 btn.classList.add('bg-white', 'hover:bg-gray-100', 'text-gray-800');
             });
             // Note: UI update (hiding votes, showing reveal btn) happens via the onValue listener for stateRef
@@ -880,7 +880,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gradient-to-br from-indigo-100 via-purple-50 to-blue-100 min-h-screen">
 
     <div class="w-full max-w-4xl mx-auto mt-4">
 
@@ -893,7 +893,7 @@
             <h1 class="text-3xl font-bold mb-6 text-gray-700">Planning Poker</h1>
             <label for="room-name" class="block text-sm font-medium text-gray-700 mb-2">Raum erstellen:</label>
             <input type="text" id="room-name" class="block w-full max-w-sm mx-auto p-3 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 mb-4" placeholder="Raumname">
-            <button id="create-room-btn" class="block w-full max-w-sm mx-auto bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-md transition duration-150 ease-in-out">
+            <button id="create-room-btn" class="block w-full max-w-sm mx-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-md transition duration-150 ease-in-out">
                 Raum erstellen
             </button>
         </div>
@@ -937,12 +937,12 @@
                  </button>
             </div>
 
-            <h3 class="text-lg font-medium text-gray-700 mb-4 text-center">Stimme abgeben:</h3>
-            <div id="voting-cards" class="flex flex-wrap justify-center gap-3 mb-6">
+            <h3 class="text-lg font-medium text-gray-700 mb-3 text-center">Stimme abgeben:</h3>
+            <div id="voting-cards" class="flex flex-wrap justify-center gap-3">
                 </div>
 
             <div class="text-center">
-                <button id="reveal-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-md transition duration-150 ease-in-out min-w-[200px]">
+                <button id="reveal-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-md mt-5 transition duration-150 ease-in-out min-w-[200px]">
                     Stimmen aufdecken
                 </button>
                 <!-- Reset Button removed from here -->
@@ -953,7 +953,7 @@
             <h1 class="text-3xl font-bold mb-6 text-red-600">Du wurdest entfernt!</h1>
             <p class="mb-6 text-gray-700">Du wurdest aus diesem Raum entfernt.</p>
             <!-- ADDED: Rejoin Button -->
-            <button id="rejoin-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-md transition duration-150 ease-in-out">
+            <button id="rejoin-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-md transition duration-150 ease-in-out">
                 Raum erneut beitreten
             </button>
         </div>
