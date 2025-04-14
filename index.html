@@ -209,7 +209,7 @@
                         updateRoomUI(); // Update room title etc. based on ID
                         // Ensure refs are valid before passing
                         if (usersRef && stateRef && kickedRef) {
-                            setupRoomListeners(usersRef, stateRef, kickedRef); // SETUP LISTENERS HERE, passing refs
+                            setupRoomListeners(currentRoomId); // SETUP LISTENERS HERE, passing roomId
                         } else {
                             console.error("Refs not ready for initial listener setup in checkUrlForRoom");
                         }
@@ -279,7 +279,7 @@
                 // Define kickedRef for the current user before calling listeners
                 const newKickedRef = ref(db, `rooms/${currentRoomId}/kicked/${currentUserId}`);
                  if (usersRef && stateRef && newKickedRef) {
-                    setupRoomListeners(usersRef, stateRef, newKickedRef); // SETUP LISTENERS HERE, passing refs
+                    setupRoomListeners(currentRoomId); // SETUP LISTENERS HERE, passing roomId
                  } else {
                     console.error("Refs not ready for initial listener setup in createRoom");
                  }
@@ -359,12 +359,12 @@
                     kickedPath: currentKickedRefFromUser.toString()
                 });
 
-                // Ensure derived refs are valid before passing
-                if (currentUsersRefFromUser && currentStateRefFromUser && currentKickedRefFromUser) {
-                     setupRoomListeners(currentUsersRefFromUser, currentStateRefFromUser, currentKickedRefFromUser); // Pass the newly derived refs
-                } else {
-                     console.error("Derived Refs not ready for listener setup in joinRoom.");
-                }
+                // Pass the currentRoomId to setup listeners
+                if (currentRoomId) {
+                     setupRoomListeners(currentRoomId);
+                 } else {
+                    console.error("currentRoomId not available for listener setup in joinRoom.");
+                 }
                 renderVotingCards(); // RENDER CARDS AFTER JOIN SUCCESS
                 updateRoomUI(); // Update title, copy link etc.
             } catch (error) {
@@ -378,35 +378,41 @@
             }
         }
 
-        // 5. Setup Room Listeners (Now accepts refs)
-        function setupRoomListeners(argUsersRef, argStateRef, argKickedRef) {
-            // --- Explicitly clean up any potential old listeners first ---
-            cleanupFirebaseListeners();
-            // --- End Explicit Cleanup ---
+        // 5. Setup Room Listeners (Now accepts roomId)
+        function setupRoomListeners(roomId) {
+            console.log(`Setting up listeners for room: ${roomId}`);
 
-            if (!argUsersRef || !argStateRef || !argKickedRef) {
-                console.error("Missing references for setupRoomListeners");
+            if (!roomId) {
+                console.error("Missing roomId for setupRoomListeners");
                 return;
             }
-            console.log("Setting up listeners with provided refs.");
 
-            // Use passed arguments instead of global variables directly
-            const currentUsersRef = argUsersRef;
-            const currentStateRef = argStateRef;
-            const currentKickedRef = argKickedRef;
+            // --- Construct paths and create local refs --- 
+            const usersPath = `rooms/${roomId}/users`;
+            const statePath = `rooms/${roomId}/state`;
+            // Kicked path needs currentUserId which is global
+            const kickedPath = `rooms/${roomId}/kicked/${currentUserId}`; 
+
+            if (!currentUserId) {
+                 console.error("Cannot setup kicked listener without currentUserId");
+                 // Proceed without kicked listener? Or return? For now, proceed.
+            }
+
+            const currentUsersRef = ref(db, usersPath);
+            const currentStateRef = ref(db, statePath);
+            // Only create kickedRef if currentUserId is available
+            const currentKickedRef = currentUserId ? ref(db, kickedPath) : null;
+
+            console.log("Local refs created for listeners:", {
+                users: currentUsersRef.toString(),
+                state: currentStateRef.toString(),
+                kicked: currentKickedRef ? currentKickedRef.toString() : 'null'
+            });
 
             // Listen for changes in users (join, leave, vote, online status)
             const usersUnsubscribe = onValue(currentUsersRef, (snapshot) => {
                 const users = snapshot.val() || {};
                 // Fetch the current revealed state before rendering participants
-                // Guard: Check if stateRef is still valid
-                if (!currentStateRef) {
-                    console.warn("stateRef is null in users listener callback. Skipping render.");
-                    return;
-                }
-                // --- Add Logging --- 
-                console.log(`Attempting get on stateRef: ${currentStateRef.toString()}, Auth: ${auth.currentUser ? auth.currentUser.uid : 'null'}`);
-                // --- End Logging ---
                 get(currentStateRef).then(stateSnapshot => {
                     const state = stateSnapshot.val() || { votesRevealed: false, revealState: 'idle' };
                     // Pass users data directly
@@ -424,11 +430,6 @@
                 updateButtonAndCountdownUI(state); // Use a dedicated function for UI updates
                 updateResultsVisibility(state.votesRevealed);
                 // Fetch users before rendering participants in state listener
-                // Guard: Check if usersRef is still valid
-                if (!currentUsersRef) {
-                   console.warn("currentUsersRef is null in state listener callback. Skipping render.");
-                   return;
-                }
                 get(currentUsersRef).then(userSnapshot => {
                      const users = userSnapshot.val() || {};
                      renderParticipants(users, state.votesRevealed);
@@ -440,11 +441,9 @@
                     resultsSummary.classList.add('hidden');
                     get(userRef).then(userSnapshot => {
                         const userData = userSnapshot.val();
-                        // Guard: Check if userRef is still valid
-                        if (!userRef) {
-                            console.warn("userRef is null in state listener get callback. Skipping highlight update.");
-                            return;
-                        }
+                        // Note: userRef is global and might be null after hash change,
+                        // but this specific get() might be okay if the state listener fires quickly.
+                        // Consider passing userRef path if issues persist.
                         if (userData) {
                             updateUserVoteHighlight(userData.vote);
                         }
@@ -949,26 +948,34 @@
         // 8. Cleanup
         function cleanupFirebaseListeners() {
             console.log("Cleaning up Firebase listeners...");
-             if (userDisconnectRef) {
+            if (typeof userDisconnectRef?.cancel === 'function') {
                 console.log("- Cancelling onDisconnect handler");
                 userDisconnectRef.cancel();
                 userDisconnectRef = null;
-             }
-             if (usersListenerUnsubscribe) {
-                 console.log("- Detaching users listener");
-                 usersListenerUnsubscribe();
-                 usersListenerUnsubscribe = null;
-             }
-            if (stateListenerUnsubscribe) {
+            }
+            if (typeof usersListenerUnsubscribe === 'function') {
+                console.log("- Detaching users listener");
+                usersListenerUnsubscribe();
+                usersListenerUnsubscribe = null;
+            }
+            if (typeof stateListenerUnsubscribe === 'function') {
                 console.log("- Detaching state listener");
                 stateListenerUnsubscribe();
                 stateListenerUnsubscribe = null;
             }
-            if (kickedListenerUnsubscribe) {
+            if (typeof kickedListenerUnsubscribe === 'function') {
                 console.log("- Detaching kicked listener");
                 kickedListenerUnsubscribe();
                 kickedListenerUnsubscribe = null;
             }
+            // Also null out global refs during cleanup
+            currentRoomId = null;
+            currentUsername = null; // Keep username potentially? Re-prompt is safer.
+            roomRef = null;
+            userRef = null;
+            usersRef = null;
+            stateRef = null;
+            kickedRef = null;
             console.log("Firebase listeners cleanup complete.");
         }
 
@@ -1001,7 +1008,7 @@
             // 1. Clean up listeners from the previous room (if any)
             cleanupFirebaseListeners();
 
-            // 2. Reset room-specific state (keep auth state)
+            // 2. Reset only minimal state, cleanup handles refs
             currentRoomId = null;
             currentUsername = null; // Keep username potentially? Re-prompt is safer.
             roomRef = null;
