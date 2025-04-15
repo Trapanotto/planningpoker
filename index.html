@@ -779,7 +779,7 @@
 
                     // Clear previous results and apply base styling
                     resultsSummary.innerHTML = '';
-                    resultsSummary.className = 'mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md text-center'; // Adjusted background and border
+                    resultsSummary.className = 'mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md text-center'; // Adjusted background and border
 
                     if (numericVoteCount > 0) {
                         const average = (sum / numericVoteCount).toFixed(1);
@@ -827,42 +827,87 @@
                         }
                     }
 
+                    // Add horizontal divider
+                    const divider = document.createElement('div');
+                    divider.className = 'w-full border-t border-gray-300 my-4'; // Full width, top border, vertical margin
+                    resultsSummary.appendChild(divider);
+
                      // Distribution section (only show if there are votes)
                     if (Object.keys(voteCounts).length > 0) {
                         const distributionContainer = document.createElement('div');
-                        distributionContainer.className = 'flex flex-wrap justify-center gap-3 mt-3';
+                        distributionContainer.className = 'flex justify-center items-end gap-4 mt-1 mb-1 min-h-[160px]'; // Increased gap and min-height
 
                         const sortedVoteKeys = Object.keys(voteCounts).sort((a, b) => {
                             const numA = parseFloat(a);
                             const numB = parseFloat(b);
-                            // Handle numbers
                             if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-                            if (!isNaN(numA)) return -1; // Numbers first
-                            if (!isNaN(numB)) return 1;  // Numbers second
-                            // Handle '-'
-                            if (a === '-') return -1; // '-' comes after numbers but before other symbols
+                            if (!isNaN(numA)) return -1;
+                            if (!isNaN(numB)) return 1;
+                            if (a === '-') return -1;
                             if (b === '-') return 1;
-                            // Handle other symbols (? , ☕)
-                            return a.localeCompare(b); // Sort other symbols alphabetically
+                            return a.localeCompare(b);
+                        });
+
+                        // Correctly calculate maxCount excluding '-' key
+                        const castVoteCounts = Object.entries(voteCounts)
+                            .filter(([vote]) => vote !== '-') // Filter out the '-' vote key
+                            .map(([, count]) => count);      // Get only the counts of cast votes
+                        // Find the maximum count among cast votes, default to 0 if no votes were cast
+                        const maxCount = castVoteCounts.length > 0 ? Math.max(...castVoteCounts) : 0;
+
+                        // Calculate total votes cast (excluding '-') - RENAME to totalParticipantsIncludingNoVote
+                        let totalParticipantsIncludingNoVote = 0;
+                        Object.values(voteCounts).forEach(count => {
+                            totalParticipantsIncludingNoVote += count;
                         });
 
                         sortedVoteKeys.forEach(vote => {
                             const count = voteCounts[vote];
+                            // Determine if the current vote count is the maximum among cast votes
+                            const isMax = count === maxCount && maxCount > 0;
 
+                            // Apply conditional styles
+                            const barColorClass = isMax ? 'bg-gray-700' : 'bg-gray-400';
+                            const cardBorderColorClass = isMax ? 'border-gray-700' : 'border-gray-400';
+                            const textColorClass = isMax ? 'text-gray-800' : 'text-gray-500';
+                            const countTextColorClass = isMax ? 'text-gray-800' : 'text-gray-500';
+
+                            const barWrapper = document.createElement('div');
+                            barWrapper.className = 'flex flex-col items-center w-[50px]'; // Kept width at 50px for consistency
+
+                            // Bar Element
+                            const barOuter = document.createElement('div');
+                            // Changed width to w-3 and height to h-[80px]
+                            barOuter.className = 'relative w-3 h-[80px] bg-gray-200 rounded-md overflow-hidden'; // Changed height class
+                            // Add tooltip with formatted percentage
+                            barOuter.title = `${((count / totalParticipantsIncludingNoVote) * 100).toFixed(1)}%`;
+                            const barInner = document.createElement('div');
+                            // Changed to rounded-md
+                            barInner.className = `absolute bottom-0 left-0 w-full ${barColorClass} rounded-md`;
+                            barInner.style.height = `${(count / totalParticipantsIncludingNoVote) * 100}%`;
+                            barOuter.appendChild(barInner);
+                            barWrapper.appendChild(barOuter);
+
+                            // Vote Value Card (Resized to match voting/participant cards)
                             const card = document.createElement('div');
-                            card.className = 'bg-white p-2 rounded-lg shadow border border-gray-200 flex flex-col items-center justify-center w-[70px] h-[90px] text-center';
+                            // Changed size to w-[50px] h-[80px], adjusted padding, margin, border
+                            card.className = `bg-white mt-2 p-1 rounded-lg shadow border ${cardBorderColorClass} flex items-center justify-center w-[50px] h-[80px] text-center`;
 
                             const voteValueSpan = document.createElement('span');
                             voteValueSpan.textContent = vote;
-                            voteValueSpan.className = `text-2xl font-bold mb-1`; // Apply color to vote value
+                            // Increased text size to 2xl for better visibility in the larger card
+                            voteValueSpan.className = `text-2xl font-bold ${textColorClass}`;
                             card.appendChild(voteValueSpan);
+                            barWrapper.appendChild(card);
 
+                            // Vote Count Text
                             const voteCountSpan = document.createElement('span');
-                            voteCountSpan.textContent = `${count} Stimme${count > 1 ? 'n' : ''}`;
-                            voteCountSpan.className = 'text-xs text-gray-500 whitespace-nowrap';
-                            card.appendChild(voteCountSpan);
+                            voteCountSpan.textContent = `${count} Stimme${count !== 1 ? 'n' : ''}`; // Corrected pluralization
+                            voteCountSpan.className = `text-xs ${countTextColorClass} whitespace-nowrap mt-1`; // Apply conditional color
+                            barWrapper.appendChild(voteCountSpan);
 
-                            distributionContainer.appendChild(card);
+
+                            distributionContainer.appendChild(barWrapper);
                         });
                         resultsSummary.appendChild(distributionContainer);
                     }
@@ -1222,7 +1267,7 @@
                 <div class="text-gray-500 italic whitespace-nowrap">Warte auf Teilnehmer...</div>
             </div>
 
-            <div id="results-summary" class="mb-2 p-4 bg-indigo-50 border border-indigo-200 rounded-md text-center">
+            <div id="results-summary" class="mb-2 p-2 bg-indigo-50 border border-indigo-200 rounded-md text-center">
                 </div>
 
             <!-- Moved Reset Button Here -->
@@ -1232,7 +1277,7 @@
                  </button>
             </div>
 
-            <h3 class="text-lg font-medium text-gray-700 mb-3 text-center">Stimme abgeben:</h3>
+            <h3 class="text-lg font-medium text-gray-700 mb-3 text-center">Schätzung abgeben:</h3>
             <div id="voting-cards" class="flex flex-wrap justify-center gap-3">
                 </div>
 
