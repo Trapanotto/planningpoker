@@ -69,8 +69,12 @@
         const copyLinkBtn = document.getElementById('copy-link-btn');
         const inviteLinkDisplay = document.getElementById('invite-link-display'); // To show the link temporarily
 
+        // --- New UI Elements for Card Set Selection ---
+        const cardSetSelect = document.getElementById('card-set-select');
+        const customCardValuesInput = document.getElementById('custom-card-values');
+
         // --- Poker Cards ---
-        const cardValues = ['0', '0.5', '1', '2', '3', '5', '8', '?', '☕'];
+        const cardValues = ['0', '0.5', '1', '2', '3', '5', '8', '?', '☕']; // This will be the fallback/default
 
         // --- Helper Functions ---
         function showScreen(screenElement) {
@@ -188,7 +192,7 @@
         }
 
         // 2. Check URL for Room ID (Modified)
-        function checkUrlForRoom() {
+        async function checkUrlForRoom() {
             const hash = window.location.hash.substring(1);
             if (hash) {
                 currentRoomId = hash;
@@ -199,11 +203,11 @@
                 kickedRef = ref(db, `rooms/${currentRoomId}/kicked/${currentUserId}`); // Need user ID, ensure auth is ready
 
                 const checkRoomRef = ref(db, `rooms/${currentRoomId}`);
-                get(checkRoomRef).then((snapshot) => {
+                get(checkRoomRef).then(async (snapshot) => {
                     if (snapshot.exists()) {
                         // --- Check if current user is kicked BEFORE showing join overlay --- 
                         const checkKickedRef = ref(db, `rooms/${currentRoomId}/kicked/${currentUserId}`);
-                        get(checkKickedRef).then(kickedSnapshot => {
+                        get(checkKickedRef).then(async kickedSnapshot => {
                             if (kickedSnapshot.exists()) {
                                 console.log(`User ${currentUserId} is kicked from room ${currentRoomId}. Showing kicked screen directly.`);
                                 showScreen(kickedScreen);
@@ -215,10 +219,10 @@
                                 showScreen(roomScreen); // Show the room screen
                                 updateRoomUI(); // Update room title etc. based on ID
                                 setupRoomListeners(currentRoomId); // SETUP LISTENERS HERE, passing roomId
-                                renderVotingCards(); // RENDER CARDS HERE
+                                await renderVotingCards(); // RENDER CARDS HERE - AWAITED
                                 showJoinOverlay(); // Show the join form as an overlay
                             }
-                        }).catch(error => {
+                        }).catch(async error => {
                              console.error("Error checking kicked status:", error);
                              // Fallback: Proceed to join overlay on error?
                              // Or show error screen? For now, proceed as if not kicked.
@@ -226,18 +230,10 @@
                              showScreen(roomScreen); 
                              updateRoomUI(); 
                              setupRoomListeners(currentRoomId);
-                             renderVotingCards(); 
+                             await renderVotingCards(); // RENDER CARDS HERE - AWAITED
                              showJoinOverlay(); 
                         });
                         // --- End Kick Check --- 
-
-                        // OLD LOGIC (Now inside the 'else' block of the kick check)
-                        // console.log(`Raum ${currentRoomId} gefunden, zeige Raum und Beitritts-Overlay.`);
-                        // showScreen(roomScreen); // Show the room screen
-                        // updateRoomUI(); // Update room title etc. based on ID
-                        // setupRoomListeners(currentRoomId); // SETUP LISTENERS HERE, passing roomId
-                        // renderVotingCards(); // RENDER CARDS HERE
-                        // showJoinOverlay(); // Show the join form as an overlay
 
                     } else {
                         // Room doesn't exist, clear hash and show initial screen
@@ -272,6 +268,18 @@
             // Log auth state just before creating room
             console.log("Checking auth state before create room:", auth.currentUser);
 
+            // Determine card set configuration
+            let cardSetConfig = { type: cardSetSelect.value };
+            if (cardSetSelect.value === 'custom') {
+                const customValues = customCardValuesInput.value.split(',').map(v => v.trim()).filter(v => v);
+                if (customValues.length > 0) {
+                    cardSetConfig.values = customValues;
+                } else {
+                    // Fallback to default if custom is selected but no values provided
+                    cardSetConfig.type = 'default'; 
+                }
+            }
+
             try {
                 await set(newRoomRef, {
                     name: roomName,
@@ -281,9 +289,10 @@
                          revealState: 'idle' // Ensure initial state is set
                     },
                     users: {},
-                    kicked: {}
+                    kicked: {},
+                    cardSetConfig: cardSetConfig // Store the card set configuration
                 });
-                console.log("Raum erstellt:", currentRoomId);
+                console.log("Raum erstellt:", currentRoomId, "mit Kartensatz:", cardSetConfig);
                 window.location.hash = currentRoomId; // Update URL
 
                 // Assign refs needed for listeners early
@@ -305,7 +314,7 @@
                  } else {
                     console.error("Refs not ready for initial listener setup in createRoom");
                  }
-                renderVotingCards(); // RENDER CARDS HERE
+                await renderVotingCards(); // RENDER CARDS HERE - AWAITED
 
                 showJoinOverlay(); // Show the join overlay on top
                 // usernameInput focus is handled by showJoinOverlay
@@ -387,7 +396,7 @@
                  } else {
                     console.error("currentRoomId not available for listener setup in joinRoom.");
                  }
-                renderVotingCards(); // RENDER CARDS AFTER JOIN SUCCESS
+                await renderVotingCards(); // RENDER CARDS AFTER JOIN SUCCESS - AWAITED
                 updateRoomUI(); // Update title, copy link etc.
             } catch (error) {
                 console.error("Fehler beim Beitreten zum Raum:", error);
@@ -533,9 +542,43 @@
 
         // 6. Render UI Elements
 
-        function renderVotingCards() {
+        async function renderVotingCards() { // Made async to await fetching cardSetConfig
             votingCards.innerHTML = ''; // Clear existing cards
-            cardValues.forEach(value => {
+            let currentCardValues = [...cardValues]; // Start with default/fallback
+
+            if (currentRoomId) {
+                const roomCardSetConfigRef = ref(db, `rooms/${currentRoomId}/cardSetConfig`);
+                try {
+                    const snapshot = await get(roomCardSetConfigRef);
+                    if (snapshot.exists()) {
+                        const config = snapshot.val();
+                        console.log("Room cardSetConfig found:", config);
+                        if (config.type === 'default') {
+                            currentCardValues = ['0', '0.5', '1', '2', '3', '5', '8', '?', '☕'];
+                        } else if (config.type === 'modified_fibonacci') {
+                            currentCardValues = ['0', '0.5', '1', '2', '3', '5', '8', '13', '20', '40', '100', '?', '☕'];
+                        } else if (config.type === 'fibonacci') {
+                            currentCardValues = ['0', '1', '2', '3', '5', '8', '13', '21', '34', '55', '89', '?', '☕'];
+                        } else if (config.type === 'tshirts') {
+                            currentCardValues = ['XS', 'S', 'M', 'L', 'XL', '?', '☕'];
+                        } else if (config.type === 'custom' && config.values && config.values.length > 0) {
+                            currentCardValues = config.values;
+                        } else {
+                            console.warn("Unrecognized or invalid cardSetConfig, using default. Config:", config);
+                            // Default values already set, so no action needed here
+                        }
+                    } else {
+                        // No cardSetConfig found (e.g. older room), use default values
+                        console.log("No cardSetConfig found for room, using default.");
+                        // Default values already set, so no action needed here
+                    }
+                } catch (error) {
+                    console.error("Error fetching cardSetConfig, using default:", error);
+                    // Default values already set, so no action needed here
+                }
+            }
+
+            currentCardValues.forEach(value => {
                 const button = document.createElement('button');
                 button.textContent = value;
                 button.dataset.value = value;
@@ -1203,6 +1246,18 @@
         // --- Initialization ---
         initializeAuth();
 
+        // --- Event Listener for Card Set Selection ---
+        if (cardSetSelect) { // Ensure element exists
+            cardSetSelect.addEventListener('change', () => {
+                if (cardSetSelect.value === 'custom') {
+                    customCardValuesInput.classList.remove('hidden');
+                    customCardValuesInput.focus();
+                } else {
+                    customCardValuesInput.classList.add('hidden');
+                }
+            });
+        }
+
         // ADDED: Handler function for the rejoin button (Modified to show overlay again if needed)
         function handleRejoin() {
             // --- Capture IDs BEFORE cleanup ---
@@ -1311,6 +1366,19 @@
             <h1 class="text-3xl font-bold mb-6 text-gray-700">Planning Poker</h1>
             
             <input type="text" id="room-name" class="block w-full max-w-sm mx-auto p-3 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 mb-4" placeholder="Raumname">
+            
+            <div class="mb-4">
+                <label for="card-set-select" class="block text-sm font-medium text-gray-700 mb-1 text-left max-w-sm mx-auto">Schätzwerte:</label>
+                <select id="card-set-select" class="block w-full max-w-sm mx-auto p-3 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="default">Standard (0, ½, 1, 2, 3, 5, 8, ?, ☕)</option>
+                    <option value="modified_fibonacci">Modified Fibonacci (0, ½, 1, 2, 3, 5, 8, 13, 20, 40, 100, ?, ☕)</option>
+                    <option value="fibonacci">Fibonacci (0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, ?, ☕)</option>
+                    <option value="tshirts">T-Shirts (XS, S, M, L, XL, ?, ☕)</option>
+                    <option value="custom">Eigene Auswahlwerte</option>
+                </select>
+                <input type="text" id="custom-card-values" class="hidden mt-2 block w-full max-w-sm mx-auto p-3 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="Werte mit Komma trennen (z.B. 1,2,3,?,☕)">
+            </div>
+
             <button id="create-room-btn" class="block w-full max-w-sm mx-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-md transition duration-150 ease-in-out">
                 Raum erstellen
             </button>
