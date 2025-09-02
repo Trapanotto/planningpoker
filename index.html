@@ -39,6 +39,7 @@
         let userDisconnectRef = null;
         let countdownInterval = null; // For reveal *triggering* interval
         let displayCountdownInterval = null; // For display-only countdown
+        let autoRevealTimeout = null; // For auto-reveal fallback
 
         // Variables to hold listener unsubscribe functions
         let usersListenerUnsubscribe = null;
@@ -448,35 +449,10 @@
 
                 const users = snapshot.val() || {};
                 
-                // Check if we need to auto-reveal due to trigger user leaving during countdown
+                // Fetch the current revealed state before rendering participants
                 if (capturedStateRefForUsersListener) {
                     get(capturedStateRefForUsersListener).then(stateSnapshot => {
                         const state = stateSnapshot.val() || { votesRevealed: false, revealState: 'idle' };
-                        
-                        // If we're in counting state, check if the trigger user is still online
-                        if (state.revealState === 'counting') {
-                            // Find the trigger user (first user who initiated the countdown)
-                            // For now, we'll use a simple approach: if any user is online, we assume the trigger is still there
-                            const onlineUsers = Object.values(users).filter(user => user && user.online);
-                            if (onlineUsers.length === 0) {
-                                // No users online, auto-reveal after 5 seconds
-                                console.log("No users online during countdown, auto-revealing votes after 5 seconds");
-                                setTimeout(() => {
-                                    // Double-check the state before auto-revealing
-                                    get(capturedStateRefForUsersListener).then(currentStateSnapshot => {
-                                        const currentState = currentStateSnapshot.val();
-                                        if (currentState && currentState.revealState === 'counting') {
-                                            update(capturedStateRefForUsersListener, { revealState: 'revealed', votesRevealed: true })
-                                                .then(() => console.log("Stimmen automatisch aufgedeckt (keine Benutzer online)."))
-                                                .catch(error => {
-                                                    console.error("Fehler beim automatischen Aufdecken der Stimmen:", error);
-                                                    update(capturedStateRefForUsersListener, { revealState: 'idle', votesRevealed: false });
-                                                });
-                                        }
-                                    });
-                                }, 5000);
-                            }
-                        }
                         
                         // Pass users data directly
                         renderParticipants(users, state.votesRevealed);
@@ -503,6 +479,44 @@
                 const capturedUserRefForStateListener = userRef; // Capture global userRef
 
                 const state = snapshot.val() || { votesRevealed: false, revealState: 'idle' };
+                
+                // Handle auto-reveal logic when state changes to counting
+                if (state.revealState === 'counting') {
+                    // Clear any existing auto-reveal timeout
+                    if (autoRevealTimeout) {
+                        clearTimeout(autoRevealTimeout);
+                        autoRevealTimeout = null;
+                    }
+                    
+                    // Set a 5-second fallback timeout for auto-reveal
+                    autoRevealTimeout = setTimeout(() => {
+                        console.log("Auto-reveal timeout triggered, checking if still in counting state...");
+                        // Check current state before auto-revealing
+                        get(capturedStateRefForStateListener).then(currentStateSnapshot => {
+                            const currentState = currentStateSnapshot.val();
+                            if (currentState && currentState.revealState === 'counting') {
+                                console.log("Still in counting state, auto-revealing votes");
+                                update(capturedStateRefForStateListener, { revealState: 'revealed', votesRevealed: true })
+                                    .then(() => console.log("Stimmen automatisch aufgedeckt (5-Sekunden-Timeout)."))
+                                    .catch(error => {
+                                        console.error("Fehler beim automatischen Aufdecken der Stimmen:", error);
+                                        update(capturedStateRefForStateListener, { revealState: 'idle', votesRevealed: false });
+                                    });
+                            } else {
+                                console.log("State changed, not auto-revealing");
+                            }
+                        }).catch(error => {
+                            console.error("Fehler beim Prüfen des aktuellen Status für Auto-Reveal:", error);
+                        });
+                    }, 5000);
+                } else {
+                    // Clear auto-reveal timeout if not in counting state
+                    if (autoRevealTimeout) {
+                        clearTimeout(autoRevealTimeout);
+                        autoRevealTimeout = null;
+                    }
+                }
+                
                 updateButtonAndCountdownUI(state); // Use a dedicated function for UI updates
                 updateResultsVisibility(state.votesRevealed);
 
@@ -1215,6 +1229,11 @@
                 console.log("- Detaching kicked listener");
                 kickedListenerUnsubscribe();
                 kickedListenerUnsubscribe = null;
+            }
+            // Clear auto-reveal timeout
+            if (autoRevealTimeout) {
+                clearTimeout(autoRevealTimeout);
+                autoRevealTimeout = null;
             }
             // Also null out global refs during cleanup
             currentRoomId = null;
