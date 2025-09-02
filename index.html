@@ -39,8 +39,6 @@
         let userDisconnectRef = null;
         let countdownInterval = null; // For reveal *triggering* interval
         let displayCountdownInterval = null; // For display-only countdown
-        let stateRecoveryInterval = null; // For periodic state recovery checks
-        let lastStateUpdate = Date.now(); // Track when state was last updated
 
         // Variables to hold listener unsubscribe functions
         let usersListenerUnsubscribe = null;
@@ -184,84 +182,12 @@
                         userDisconnectRef.update({ online: false })
                             .catch(err => console.error("Fehler beim erneuten Setzen von onDisconnect:", err));
                     }
-                    
-                    // Start state recovery monitoring after reconnection
-                    startStateRecoveryMonitoring();
                 } else {
                     console.log("Verbindung zu Firebase getrennt.");
-                    // Stop state recovery monitoring when disconnected
-                    stopStateRecoveryMonitoring();
                     // No action needed here, onDisconnect should handle marking offline
                     // Setting initial connect flag allows logic to run on *next* connection
                     isInitialConnect = false;
                 }
-            });
-        }
-
-        // State Recovery Functions
-        function startStateRecoveryMonitoring() {
-            if (stateRecoveryInterval) {
-                clearInterval(stateRecoveryInterval);
-            }
-            
-            stateRecoveryInterval = setInterval(() => {
-                checkAndRecoverState();
-            }, 5000); // Check every 5 seconds
-        }
-        
-        function stopStateRecoveryMonitoring() {
-            if (stateRecoveryInterval) {
-                clearInterval(stateRecoveryInterval);
-                stateRecoveryInterval = null;
-            }
-        }
-        
-        function checkAndRecoverState() {
-            if (!stateRef || !currentRoomId) return;
-            
-            const now = Date.now();
-            const timeSinceLastUpdate = now - lastStateUpdate;
-            
-            // If it's been more than 10 seconds since last state update, check for stuck states
-            if (timeSinceLastUpdate > 10000) {
-                get(stateRef).then(snapshot => {
-                    const state = snapshot.val() || { votesRevealed: false, revealState: 'idle' };
-                    
-                    // Check for stuck counting state (should not be counting for more than 10 seconds)
-                    if (state.revealState === 'counting') {
-                        console.warn("Detected stuck counting state, attempting recovery...");
-                        recoverStuckState(state);
-                    }
-                }).catch(error => {
-                    console.error("Error checking state for recovery:", error);
-                });
-            }
-        }
-        
-        function recoverStuckState(state) {
-            if (!stateRef) return;
-            
-            console.log("Attempting to recover stuck state:", state);
-            
-            // Force transition to revealed state if stuck in counting
-            update(stateRef, { 
-                revealState: 'revealed', 
-                votesRevealed: true,
-                lastRecovery: serverTimestamp()
-            }).then(() => {
-                console.log("State recovered from stuck counting to revealed");
-                lastStateUpdate = Date.now();
-            }).catch(error => {
-                console.error("Failed to recover stuck state:", error);
-                // Fallback: try to reset to idle
-                update(stateRef, { 
-                    revealState: 'idle', 
-                    votesRevealed: false,
-                    lastRecovery: serverTimestamp()
-                }).then(() => {
-                    console.log("State recovered from stuck counting to idle");
-                    lastStateUpdate = Date.now();
-                }).catch(err => console.error("Failed to reset state to idle:", err));
             });
         }
 
@@ -390,9 +316,6 @@
                  }
                 await renderVotingCards(); // RENDER CARDS HERE - AWAITED
 
-                // Start state recovery monitoring after successful room creation
-                startStateRecoveryMonitoring();
-
                 showJoinOverlay(); // Show the join overlay on top
                 // usernameInput focus is handled by showJoinOverlay
 
@@ -475,9 +398,6 @@
                  }
                 await renderVotingCards(); // RENDER CARDS AFTER JOIN SUCCESS - AWAITED
                 updateRoomUI(); // Update title, copy link etc.
-                
-                // Start state recovery monitoring after successful join
-                startStateRecoveryMonitoring();
             } catch (error) {
                 console.error("Fehler beim Beitreten zum Raum:", error);
                 alert("Beitritt zum Raum fehlgeschlagen.");
@@ -557,10 +477,6 @@
                 const capturedUserRefForStateListener = userRef; // Capture global userRef
 
                 const state = snapshot.val() || { votesRevealed: false, revealState: 'idle' };
-                
-                // Update timestamp for state recovery monitoring
-                lastStateUpdate = Date.now();
-                
                 updateButtonAndCountdownUI(state); // Use a dedicated function for UI updates
                 updateResultsVisibility(state.votesRevealed);
 
@@ -622,9 +538,6 @@
             stateListenerUnsubscribe = stateUnsubscribe;
             kickedListenerUnsubscribe = kickedUnsubscribe;
             console.log("Listeners attached and unsubscribe handles stored."); // Add log
-            
-            // Start state recovery monitoring after setting up listeners
-            startStateRecoveryMonitoring();
         }
 
         // 6. Render UI Elements
@@ -804,25 +717,10 @@
                 revealBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
                 revealBtn.classList.add('bg-indigo-500');
 
-                // Start local display countdown with safety timeout
+                // Start local display countdown
                 let displayCountdown = 3;
-                const maxDisplayTime = 15000; // 15 seconds max for display countdown
-                const displayStartTime = Date.now();
-                
                 revealBtn.textContent = `Aufdecken in ${displayCountdown}...`;
                 displayCountdownInterval = setInterval(() => {
-                    const elapsed = Date.now() - displayStartTime;
-                    
-                    // Safety timeout: if display countdown takes too long, show recovery message
-                    if (elapsed > maxDisplayTime) {
-                        clearInterval(displayCountdownInterval);
-                        displayCountdownInterval = null;
-                        revealBtn.textContent = 'Aufdecken... (Wiederherstellung läuft)';
-                        revealBtn.classList.remove('bg-indigo-500');
-                        revealBtn.classList.add('bg-yellow-500');
-                        return;
-                    }
-                    
                     displayCountdown--;
                     if (displayCountdown > 0) {
                         revealBtn.textContent = `Aufdecken in ${displayCountdown}...`;
@@ -830,7 +728,8 @@
                         // Stop display countdown, wait for state change to revealed
                         clearInterval(displayCountdownInterval);
                         displayCountdownInterval = null;
-                        revealBtn.textContent = 'Aufdecken...';
+                        // Optionally show a brief "Aufgedeckt!" or similar before state change fully hides it
+                        // revealBtn.textContent = 'Aufgedeckt!';
                     }
                 }, 1000);
 
@@ -840,7 +739,7 @@
                 // Ensure reveal button is reset for next round (might be hidden, but reset its state)
                 revealBtn.disabled = false;
                 revealBtn.textContent = 'Stimmen aufdecken';
-                revealBtn.classList.remove('bg-indigo-500', 'bg-yellow-500');
+                revealBtn.classList.remove('bg-indigo-500');
                 revealBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
 
             } else { // Idle state (votesRevealed is false, revealState is idle)
@@ -848,7 +747,7 @@
                 resetBtn.classList.add('hidden');
                 revealBtn.disabled = false;
                 revealBtn.textContent = 'Stimmen aufdecken';
-                revealBtn.classList.remove('bg-indigo-500', 'bg-yellow-500');
+                revealBtn.classList.remove('bg-indigo-500');
                 revealBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
             }
         }
@@ -1168,126 +1067,67 @@
         function handleRevealVotes() {
             if (!stateRef) return;
 
-            // Update timestamp for state recovery monitoring
-            lastStateUpdate = Date.now();
-
             // Initiator sets state to counting
-            update(stateRef, { 
-                revealState: 'counting', 
-                votesRevealed: false,
-                countdownStartTime: serverTimestamp()
-            })
+            update(stateRef, { revealState: 'counting', votesRevealed: false })
                 .then(() => {
                     console.log("Countdown gestartet (State: counting).");
 
-                    // Initiator starts the *triggering* countdown with timeout protection
-                    if (countdownInterval) clearInterval(countdownInterval);
-                    
+                    // Initiator starts the *triggering* countdown
+                    if (countdownInterval) clearInterval(countdownInterval); // Clear previous trigger interval if any
                     let triggerCountdown = 3;
-                    const maxCountdownTime = 10000; // 10 seconds max for countdown
-                    const countdownStartTime = Date.now();
-                    
                     countdownInterval = setInterval(() => {
-                        const elapsed = Date.now() - countdownStartTime;
-                        
-                        // Safety timeout: if countdown takes too long, force reveal
-                        if (elapsed > maxCountdownTime) {
-                            console.warn("Countdown timeout reached, forcing reveal");
-                            clearInterval(countdownInterval);
-                            countdownInterval = null;
-                            forceRevealState();
-                            return;
-                        }
-                        
                         triggerCountdown--;
                         if (triggerCountdown <= 0) {
                             clearInterval(countdownInterval);
                             countdownInterval = null;
                             // After 3 seconds, initiator sets state to revealed
-                            update(stateRef, { 
-                                revealState: 'revealed', 
-                                votesRevealed: true,
-                                countdownEndTime: serverTimestamp()
-                            })
-                                .then(() => {
-                                    console.log("Stimmen aufgedeckt (State: revealed).");
-                                    lastStateUpdate = Date.now();
-                                })
+                            update(stateRef, { revealState: 'revealed', votesRevealed: true })
+                                .then(() => console.log("Stimmen aufgedeckt (State: revealed)."))
                                 .catch(error => {
                                     console.error("Fehler beim Setzen des revealed State:", error);
-                                    // Try to recover from error
-                                    handleRevealError(error);
+                                    // Optional: Try to reset state back to idle on error?
+                                    update(stateRef, { revealState: 'idle', votesRevealed: false });
                                 });
                         }
                     }, 1000);
 
+                    // Add a 5-second fallback timeout in case the trigger user leaves
+                    setTimeout(() => {
+                        // Check if we're still in counting state (meaning the trigger user left)
+                        get(stateRef).then(snapshot => {
+                            const currentState = snapshot.val();
+                            if (currentState && currentState.revealState === 'counting') {
+                                console.log("Trigger user left during countdown, auto-revealing votes after 5 seconds");
+                                // Auto-reveal the votes
+                                update(stateRef, { revealState: 'revealed', votesRevealed: true })
+                                    .then(() => console.log("Stimmen automatisch aufgedeckt (Trigger-User hat den Raum verlassen)."))
+                                    .catch(error => {
+                                        console.error("Fehler beim automatischen Aufdecken der Stimmen:", error);
+                                        // Reset to idle state on error
+                                        update(stateRef, { revealState: 'idle', votesRevealed: false });
+                                    });
+                            }
+                        }).catch(error => {
+                            console.error("Fehler beim Prüfen des aktuellen Status für Auto-Reveal:", error);
+                        });
+                    }, 5000); // 5 seconds timeout
+
                 })
                 .catch(error => {
                     console.error("Fehler beim Setzen des counting State:", error);
-                    // If setting counting state fails, reset button immediately
-                    resetRevealButton();
+                     // If setting counting state fails, reset button immediately
+                    revealBtn.disabled = false;
+                    revealBtn.textContent = 'Stimmen aufdecken';
+                    revealBtn.classList.remove('bg-indigo-500');
+                    revealBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
                 });
 
             // UI update (disabling button, showing text) is now handled by the state listener
             // via updateButtonAndCountdownUI
         }
-        
-        function forceRevealState() {
-            if (!stateRef) return;
-            
-            console.log("Forcing reveal state due to timeout");
-            update(stateRef, { 
-                revealState: 'revealed', 
-                votesRevealed: true,
-                forcedReveal: true,
-                countdownEndTime: serverTimestamp()
-            })
-                .then(() => {
-                    console.log("State forced to revealed due to timeout");
-                    lastStateUpdate = Date.now();
-                })
-                .catch(error => {
-                    console.error("Failed to force reveal state:", error);
-                    handleRevealError(error);
-                });
-        }
-        
-        function handleRevealError(error) {
-            console.error("Handling reveal error:", error);
-            // Try to reset state back to idle on error
-            if (stateRef) {
-                update(stateRef, { 
-                    revealState: 'idle', 
-                    votesRevealed: false,
-                    lastError: error.message || 'Unknown error',
-                    errorTime: serverTimestamp()
-                })
-                    .then(() => {
-                        console.log("State reset to idle after error");
-                        lastStateUpdate = Date.now();
-                    })
-                    .catch(err => {
-                        console.error("Failed to reset state after error:", err);
-                        // Last resort: reset button manually
-                        resetRevealButton();
-                    });
-            } else {
-                resetRevealButton();
-            }
-        }
-        
-        function resetRevealButton() {
-            revealBtn.disabled = false;
-            revealBtn.textContent = 'Stimmen aufdecken';
-            revealBtn.classList.remove('bg-indigo-500');
-            revealBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
-        }
 
         function handleResetVotes() {
             if (!stateRef || !usersRef) return;
-
-            // Update timestamp for state recovery monitoring
-            lastStateUpdate = Date.now();
 
             // Stop local display countdown if running
             if (displayCountdownInterval) {
@@ -1301,11 +1141,7 @@
             }
 
             // Update Firebase state to idle
-            update(stateRef, { 
-                revealState: 'idle', 
-                votesRevealed: false,
-                resetTime: serverTimestamp()
-            })
+            update(stateRef, { revealState: 'idle', votesRevealed: false })
                 .then(() => console.log("Abstimmung zurückgesetzt (State: idle)."))
                 .catch(error => console.error("Fehler beim Zurücksetzen des Status:", error));
 
@@ -1353,10 +1189,6 @@
         // 8. Cleanup
         function cleanupFirebaseListeners() {
             console.log("Cleaning up Firebase listeners...");
-            
-            // Stop state recovery monitoring
-            stopStateRecoveryMonitoring();
-            
             if (typeof userDisconnectRef?.cancel === 'function') {
                 console.log("- Cancelling onDisconnect handler");
                 userDisconnectRef.cancel();
@@ -1377,17 +1209,6 @@
                 kickedListenerUnsubscribe();
                 kickedListenerUnsubscribe = null;
             }
-            
-            // Clear countdown intervals
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
-                countdownInterval = null;
-            }
-            if (displayCountdownInterval) {
-                clearInterval(displayCountdownInterval);
-                displayCountdownInterval = null;
-            }
-            
             // Also null out global refs during cleanup
             currentRoomId = null;
             currentUsername = null; // Keep username potentially? Re-prompt is safer.
